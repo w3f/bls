@@ -1,0 +1,6 @@
+[package]
+name = "bls"
+version = "0.0.1"
+authors = ["str4d <str4d@i2pmail.org>"]
+
+[dependencies]
