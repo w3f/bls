@@ -4,3 +4,8 @@ version = "0.0.1"
 authors = ["str4d <str4d@i2pmail.org>"]
 
 [dependencies]
+rand = "0.3"
+
+[dependencies.pairing]
+git = "https://github.com/mmaker/pairing"
+branch = "feature/hashing"
