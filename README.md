@@ -16,6 +16,35 @@ let sig = keypair.sign(&message.as_bytes());
 assert_eq!(keypair.verify(&message.as_bytes(), &sig), true);
 ```
 
+### Aggregate signatures
+
+```rust
+use bls::{AggregateSignature, Keypair};
+use pairing::bls12_381::Bls12;
+
+let mut inputs = Vec::new();
+let mut asig = AggregateSignature::new();
+
+let keypair1 = Keypair::<Bls12>::generate(&mut rng);
+let message1 = "Some unique message";
+let sig1 = keypair1.sign(&message1.as_bytes());
+inputs.push((keypair1.public, message1));
+asig.aggregate(&sig1);
+
+let keypair2 = Keypair::<Bls12>::generate(&mut rng);
+let message2 = "Some other unique message";
+let sig2 = keypair2.sign(&message2.as_bytes());
+inputs.push((keypair2.public, message2));
+asig.aggregate(&sig2);
+
+assert_eq!(
+    asig.verify(&inputs.iter()
+        .map(|&(ref pk, ref m)| (pk, m.as_bytes()))
+        .collect()),
+    true
+);
+```
+
 ## Security Warnings
 
 This library does not make any guarantees about constant-time operations, memory access patterns, or resistance to side-channel attacks.
