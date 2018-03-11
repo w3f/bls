@@ -79,7 +79,7 @@ mod tests {
     fn sign_verify() {
         let mut rng = XorShiftRng::from_seed([0xbc4f6d44, 0xd62f276c, 0xb963afd0, 0x5455863d]);
 
-        for i in 0..1000 {
+        for i in 0..500 {
             let keypair = Keypair::<Bls12>::generate(&mut rng);
             let message = format!("Message {}", i);
             let sig = keypair.sign(&message.as_bytes());
