@@ -1,5 +1,5 @@
 [package]
-authors = ["Jack Grigg <str4d@i2pmail.org>"]
+authors = ["Jack Grigg <str4d@i2pmail.org>", "Jeff Burdges <burdges@gnunet.org>"]
 description = "BLS signatures"
 documentation = "https://github.com/str4d/bls"
 homepage = "https://github.com/str4d/bls"
@@ -13,4 +13,4 @@ rand = "0.3"
 
 [dependencies.pairing]
 git = "https://github.com/mmaker/pairing"
-branch = "feature/hashing"
+branch = "master"
