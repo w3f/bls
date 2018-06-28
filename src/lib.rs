@@ -1,4 +1,3 @@
-#![feature(associated_type_defaults)]
 
 extern crate pairing;
 extern crate rand;
