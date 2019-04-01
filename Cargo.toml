@@ -9,8 +9,15 @@ repository = "https://github.com/str4d/bls"
 version = "0.0.1"
 
 [dependencies]
-rand = "0.3"
+rand = "0.4.0"
+# sha3 = "0.8"
+
+[dependencies.merlin] 
+version = "1.0.0"
+# features = ["debug-transcript"]
 
 [dependencies.pairing]
-git = "https://github.com/mmaker/pairing"
-branch = "master"
+git = "https://github.com/burdges/pairing"
+branch = "derives_borrows_etc0"
+# git = "https://github.com/mmaker/pairing"
+# branch = "master"
