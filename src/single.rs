@@ -44,34 +44,34 @@ use super::*;
 pub struct SecretKeyVT<E: EngineBLS>(pub E::Scalar);
 
 impl<E: EngineBLS> SecretKeyVT<E> {
-	/// Generate a secret key without side channel protections.
+    /// Generate a secret key without side channel protections.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )
     }
 
     /// Sign without side channel protections from key mutation.
     pub fn sign(&self, message: Message) -> Signature<E> {
-		let mut s = message.hash_to_signature_curve::<E>();
-		s.mul_assign(self.0);
+        let mut s = message.hash_to_signature_curve::<E>();
+        s.mul_assign(self.0);
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
-		Signature(s)
+        Signature(s)
     }
 
-	/// Convert into a `SecretKey` that supports side channel protections,
-	/// but does not itself resplit the key.
+    /// Convert into a `SecretKey` that supports side channel protections,
+    /// but does not itself resplit the key.
     pub fn into_split(&self) -> SecretKey<E> {
-    	SecretKey(self.0.clone(),E::Scalar::zero())
+        SecretKey(self.0.clone(),E::Scalar::zero())
     }
 
-	/// 
-	pub fn into_public(&self) -> PublicKey<E> {
+    /// 
+    pub fn into_public(&self) -> PublicKey<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-		PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::one().mul(self.0) )
+        PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::one().mul(self.0) )
         // let mut g = <E::PublicKeyGroup as CurveProjective>::one();
-		// g.mul_assign(self.0);
+        // g.mul_assign(self.0);
         // PublicKey(p)
-	}
+    }
 }
 
 /// Secret signing key that is split to provide side channel protection.
@@ -96,72 +96,72 @@ pub struct SecretKey<E: EngineBLS>(E::Scalar,E::Scalar);
 // TODO: Serialization
 
 impl<E: EngineBLS> SecretKey<E> {
-	/// Generate a secret key that is already split for side channel protection.
+    /// Generate a secret key that is already split for side channel protection.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKey( E::generate(&mut rng), E::generate(&mut rng) )
     }
 
-	/// Create a representative usable for operations lacking 
-	/// side channel protections.  
+    /// Create a representative usable for operations lacking 
+    /// side channel protections.  
     pub fn into_vartime(&self) -> SecretKeyVT<E> {
-		let mut secret = self.0.clone();
-		secret.add_assign(&self.1);
-		SecretKeyVT(secret)
+        let mut secret = self.0.clone();
+        secret.add_assign(&self.1);
+        SecretKeyVT(secret)
     }
 
     /// Randomly adjust how we split our secret signing key. 
-	//
-	// An initial call to this function after deserialization or
-	// `into_split` incurs a miniscule risk from side channel attacks
-	// but then protects the highly vulnerable signing operations.
+    //
+    // An initial call to this function after deserialization or
+    // `into_split` incurs a miniscule risk from side channel attacks
+    // but then protects the highly vulnerable signing operations.
     pub fn resplit<R: Rng>(&mut self, mut rng: R) {
-		// resplit_with(|| Ok(self), rng).unwrap();
-		let x = E::generate(&mut rng);
-	    self.0.add_assign(&x);
-	    self.1.sub_assign(&x);
+        // resplit_with(|| Ok(self), rng).unwrap();
+        let x = E::generate(&mut rng);
+        self.0.add_assign(&x);
+        self.1.sub_assign(&x);
     }
 
     /// Sign without doing the key resplit mutation that provides side channel protection.
-	///
-	/// Avoid using directly without appropriate `replit` calls, but maybe
-	/// useful in proof-of-concenpt code, as it does not require a mutable
-	/// secret key.
+    ///
+    /// Avoid using directly without appropriate `replit` calls, but maybe
+    /// useful in proof-of-concenpt code, as it does not require a mutable
+    /// secret key.
     pub fn sign_once(&self, message: Message) -> Signature<E> {
-		let mut s = message.hash_to_signature_curve::<E>();
-		let mut t = s.clone();
-		t.mul_assign(self.0);
-		s.mul_assign(self.1);
-		s.add_assign(&t);
+        let mut s = message.hash_to_signature_curve::<E>();
+        let mut t = s.clone();
+        t.mul_assign(self.0);
+        s.mul_assign(self.1);
+        s.add_assign(&t);
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
-		Signature(s)
+        Signature(s)
     }
 
-	/// Sign after respliting the secret key for side channel protections.
+    /// Sign after respliting the secret key for side channel protections.
     pub fn sign<R: Rng>(&mut self, message: Message, rng: R) -> Signature<E> {
-		self.resplit(rng);
-		self.sign_once(message)
+        self.resplit(rng);
+        self.sign_once(message)
     }
 
     /// Derive our public key from our secret key
     ///
     /// We do not resplit for side channel protections here since
-	/// this call should be rare.
-	pub fn into_public(&self) -> PublicKey<E> {
-		let generator = <E::PublicKeyGroup as CurveProjective>::Affine::one();
-		let mut publickey = generator.mul(self.0);
-		publickey.add_assign( & generator.mul(self.1) );
-		PublicKey(publickey)
+    /// this call should be rare.
+    pub fn into_public(&self) -> PublicKey<E> {
+        let generator = <E::PublicKeyGroup as CurveProjective>::Affine::one();
+        let mut publickey = generator.mul(self.0);
+        publickey.add_assign( & generator.mul(self.1) );
+        PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
-		/*
-		let mut x = <E::PublicKeyGroup as CurveProjective>::one();
+        /*
+        let mut x = <E::PublicKeyGroup as CurveProjective>::one();
         x.mul_assign(self.0);
-		let y = <E::PublicKeyGroup as CurveProjective>::one();
+        let y = <E::PublicKeyGroup as CurveProjective>::one();
         y.mul_assign(self.1);
         x.add_assign(&y);
-		PublicKey(x)
+        PublicKey(x)
         */
-	}
+    }
 }
 
 
@@ -171,12 +171,12 @@ impl<E: EngineBLS> SecretKey<E> {
 /*
 TODO: Requires specilizatin
 macro_rules! borrow_wrapper {
-	($wrapper:tt,$wrapped:tt,$var:tt) => {
+    ($wrapper:tt,$wrapped:tt,$var:tt) => {
 impl<E: EngineBLS> Borrow<E::$wrapped> for $wrapper<E> {
-	borrow(&self) -> &E::$wrapped { &self.$var }
+    borrow(&self) -> &E::$wrapped { &self.$var }
 }
 impl<E: EngineBLS> BorrowMut<E::$wrapped> for $wrapper<E> {
-	borrow_mut(&self) -> &E::$wrapped { &self.$var }
+    borrow_mut(&self) -> &E::$wrapped { &self.$var }
 }
     } 
 } // macro_rules!
@@ -184,7 +184,7 @@ impl<E: EngineBLS> BorrowMut<E::$wrapped> for $wrapper<E> {
 
 
 macro_rules! broken_derives {
-	($wrapper:tt) => {
+    ($wrapper:tt) => {
 
 impl<E: EngineBLS> Clone for $wrapper<E> {
     fn clone(&self) -> Self { $wrapper(self.0) }
@@ -216,17 +216,17 @@ broken_derives!(Signature);  // Actually the derive works for this one, not sure
 impl<E: EngineBLS> Signature<E> {
     /// Verify a single BLS signature
     pub fn verify(&self, message: Message, publickey: &PublicKey<E>) -> bool {
-		let publickey = publickey.0.into_affine().prepare();
+        let publickey = publickey.0.into_affine().prepare();
         // TODO: Bentchmark these two variants
         // Variant 1.  Do not batch any normalizations
-		let message = message.hash_to_signature_curve::<E>().into_affine().prepare();
-		let signature = self.0.into_affine().prepare();
+        let message = message.hash_to_signature_curve::<E>().into_affine().prepare();
+        let signature = self.0.into_affine().prepare();
         // Variant 2.  Batch signature curve normalizations
-		//   let mut s = [E::hash_to_signature_curve(message), signature.0];
-		//   E::SignatureCurve::batch_normalization(&s);
-		//   let message = s[0].into_affine().prepare();
-		//   let signature = s[1].into_affine().prepare();
-		// TODO: Compare benchmarks on variants
+        //   let mut s = [E::hash_to_signature_curve(message), signature.0];
+        //   E::SignatureCurve::batch_normalization(&s);
+        //   let message = s[0].into_affine().prepare();
+        //   let signature = s[1].into_affine().prepare();
+        // TODO: Compare benchmarks on variants
         E::verify_prepared( & signature, once((&publickey,&message)) )
     }
 }
@@ -261,18 +261,18 @@ impl<E: EngineBLS> KeypairVT<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
         let secret = SecretKeyVT::generate(rng);
-		let public = secret.into_public();
+        let public = secret.into_public();
         KeypairVT { secret, public }
     }
 
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
     pub fn sign<R: Rng>(&self, message: Message) -> SignedMessage<E> {
-        let signature = self.secret.sign(message);	
-		SignedMessage {
-			message,
-			publickey: self.public.clone(),
-	        signature,
-		}
+        let signature = self.secret.sign(message);  
+        SignedMessage {
+            message,
+            publickey: self.public.clone(),
+            signature,
+        }
     }
 }
 
@@ -294,18 +294,18 @@ impl<E: EngineBLS> Keypair<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
         let secret = SecretKey::generate(rng);
-		let public = secret.into_public();
+        let public = secret.into_public();
         Keypair { secret, public }
     }
 
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
     pub fn sign_with_rng<R: Rng>(&mut self, message: Message, rng: R) -> SignedMessage<E> {
         let signature = self.secret.sign(message,rng);
-		SignedMessage {
-			message,
-			publickey: self.public,
-	        signature,
-		}
+        SignedMessage {
+            message,
+            publickey: self.public,
+            signature,
+        }
     }
 
     /// Create a `SignedMessage` using the default `ThreadRng`.
@@ -320,9 +320,9 @@ impl<E: EngineBLS> Keypair<E> {
 /// 
 #[derive(Clone)]
 pub struct SignedMessage<E: EngineBLS> {
-	pub message: Message,
-	pub publickey: PublicKey<E>,
-	pub signature: Signature<E>,
+    pub message: Message,
+    pub publickey: PublicKey<E>,
+    pub signature: Signature<E>,
 }
 // TODO: Serialization
 
@@ -330,18 +330,18 @@ pub struct SignedMessage<E: EngineBLS> {
 // borrow_wrapper!(PublicKey,PublicKeyGroup,publickey);
 
 impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
-	type E = E;
+    type E = E;
 
-	type M = Message;
+    type M = Message;
     type PKG = PublicKey<E>;
 
-	type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
 
-	fn messages_and_publickeys(self) -> Self::PKnM {
-		once((self.message.clone(), self.publickey))	// TODO:  Avoid clone
-	}
+    fn messages_and_publickeys(self) -> Self::PKnM {
+        once((self.message.clone(), self.publickey))    // TODO:  Avoid clone
+    }
 
-	fn signature(&self) -> Signature<E> { self.signature }
+    fn signature(&self) -> Signature<E> { self.signature }
 
     fn verify(self) -> bool {
         self.signature.verify(self.message, &self.publickey)
@@ -403,11 +403,11 @@ impl<E: EngineBLS> SignedMessage<E> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
     use pairing::bls12_381::Bls12;
     use rand::{SeedableRng, XorShiftRng};
 
     // #[test]
-	// fn foo() { }
+    // fn foo() { }
 }

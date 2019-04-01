@@ -80,8 +80,8 @@ pub trait EngineBLS {
     /// becuase all verifiers perform additions on this curve, or
     /// even scalar multiplicaitons with delinearization.
     type PublicKeyGroup: 
-		CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
-		+ Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
+        CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
+        + Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
 
     /// Group where BLS signatures live
     ///
@@ -89,21 +89,21 @@ pub trait EngineBLS {
     /// becuase only aggregators perform additions on this curve, or
     /// scalar multiplicaitons with delinearization.
     type SignatureGroup: 
-		CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
-		+ Into<<Self::SignatureGroup as CurveProjective>::Affine>;
+        CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
+        + Into<<Self::SignatureGroup as CurveProjective>::Affine>;
 
-	/// Generate a random scalar 
-	fn generate<R: Rng>(rng: &mut R) -> Self::Scalar {
-		Self::Scalar::rand(rng)
-	}
+    /// Generate a random scalar 
+    fn generate<R: Rng>(rng: &mut R) -> Self::Scalar {
+        Self::Scalar::rand(rng)
+    }
 
-	/// Hash one message to the signature curve.
-	fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-	    <Self::SignatureGroup as CurveProjective>::hash(message.borrow())
-	}
+    /// Hash one message to the signature curve.
+    fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
+        <Self::SignatureGroup as CurveProjective>::hash(message.borrow())
+    }
 
     /// Run the Miller loop from `Engine` but orients its arguments
-	/// to be a `SignatureGroup` and `PublicKeyGroup`.
+    /// to be a `SignatureGroup` and `PublicKeyGroup`.
     fn miller_loop<'a,I>(i: I) -> <Self::Engine as Engine>::Fqk
     where
         I: IntoIterator<Item = (
@@ -111,51 +111,51 @@ pub trait EngineBLS {
             &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
         )>;
 
-	/// Perform final exponentiation on the result of a Miller loop.
-	fn final_exponentiation(e: &<Self::Engine as Engine>::Fqk) -> Option<<Self::Engine as Engine>::Fqk> {
-		Self::Engine::final_exponentiation(e)
-	}
+    /// Perform final exponentiation on the result of a Miller loop.
+    fn final_exponentiation(e: &<Self::Engine as Engine>::Fqk) -> Option<<Self::Engine as Engine>::Fqk> {
+        Self::Engine::final_exponentiation(e)
+    }
 
     /// Performs a pairing operation `e(p, q)` by calling `Engine::pairing`
-	/// but orients its arguments to be a `PublicKeyGroup` and `SignatureGroup`.
+    /// but orients its arguments to be a `PublicKeyGroup` and `SignatureGroup`.
     fn pairing<G1,G2>(p: G1, q: G2) -> <Self::Engine as Engine>::Fqk
     where
         G1: Into<<Self::PublicKeyGroup as CurveProjective>::Affine>,
         G2: Into<<Self::SignatureGroup as CurveProjective>::Affine>;
-	/*
+    /*
     {
         Self::final_exponentiation(&Self::miller_loop(
             [(&(p.into().prepare()), &(q.into().prepare()))].into_iter(),
         )).unwrap()
     }
-	*/
+    */
 
-	/// Implement verification equation for aggregate BLS signatures
-	/// provided as prepared points
-	/// 
-	/// This low-level routine does no verification of critical security
-	/// properties like message distinctness.  It exists purely to
-	/// simplify replacing mid-level routines with optimized variants,
-	/// like versions that cache public key preperation or use fewer pairings. 
-	fn verify_prepared<'a,I>(
-		signature: &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
-		inputs: I
-	  ) -> bool
+    /// Implement verification equation for aggregate BLS signatures
+    /// provided as prepared points
+    /// 
+    /// This low-level routine does no verification of critical security
+    /// properties like message distinctness.  It exists purely to
+    /// simplify replacing mid-level routines with optimized variants,
+    /// like versions that cache public key preperation or use fewer pairings. 
+    fn verify_prepared<'a,I>(
+        signature: &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
+        inputs: I
+      ) -> bool
     where
         I: IntoIterator<Item = (
             &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
             &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
         )>
-	{
+    {
         // Use a polymorphic static or const if we ever get either. 
-		let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
+        let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
         g1_minus_generator.negate();
-		Self::final_exponentiation( & Self::miller_loop(
-			inputs.into_iter().map(|t| t)  // reborrow hack
+        Self::final_exponentiation( & Self::miller_loop(
+            inputs.into_iter().map(|t| t)  // reborrow hack
                 .chain(::std::iter::once( (& g1_minus_generator.prepare(), signature) ))
                 // .chain(&[ (& g1_minus_generator.prepare(), signature) ])
-		) ).unwrap().is_zero() // == E::Fqk::zero()
-	}
+        ) ).unwrap().is_zero() // == E::Fqk::zero()
+    }
 }
 
 
@@ -183,8 +183,8 @@ pub const Z_BLS : ZBLS = UsualBLS(::pairing::bls12_381::Bls12);
 pub struct UsualBLS<E: Engine>(pub E);
 
 impl<E: Engine> EngineBLS for UsualBLS<E> {
-	type Engine = E;
-	type Scalar = <Self::Engine as Engine>::Fr;
+    type Engine = E;
+    type Scalar = <Self::Engine as Engine>::Fr;
     type PublicKeyGroup = E::G1;
     type SignatureGroup = E::G2;
 
@@ -224,8 +224,8 @@ impl<E: Engine> EngineBLS for UsualBLS<E> {
 pub struct TinyBLS<E: Engine>(pub E);
 
 impl<E: Engine> EngineBLS for TinyBLS<E> {
-	type Engine = E;
-	type Scalar = <Self::Engine as Engine>::Fr;
+    type Engine = E;
+    type Scalar = <Self::Engine as Engine>::Fr;
     type PublicKeyGroup = E::G2;
     type SignatureGroup = E::G1;
 
@@ -266,36 +266,36 @@ impl<E: Engine> EngineBLS for TinyBLS<E> {
 /// We shall eventually remove MnPK entirely whenever `-> impl Trait`
 /// in traits gets stabalized https://github.com/rust-lang/rust/issues/34511
 pub trait Signed: Sized {
-	type E: EngineBLS;
+    type E: EngineBLS;
 
-	/// Return the aggregated signature 
-	fn signature(&self) -> Signature<Self::E>;
+    /// Return the aggregated signature 
+    fn signature(&self) -> Signature<Self::E>;
 
     type M: Borrow<Message> = Message;
     type PKG: Borrow<PublicKey<Self::E>> = PublicKey<Self::E>;
 
     /// Iterator over messages and public key reference pairs.
     type PKnM: Iterator<Item = (Self::M,Self::PKG)> + ExactSizeIterator;
-	// type PKnM<'a>: Iterator<Item = (
+    // type PKnM<'a>: Iterator<Item = (
     //    &'a <<Self as Signed<'a>>::E as EngineBLS>::PublicKeyGroup,
     //    &'a Self::M,
     // )> + DoubleEndedIterator + ExactSizeIterator + 'a;
 
     /// Returns an iterator over messages and public key reference for
-	/// pairings, often only partially aggregated. 
-	fn messages_and_publickeys(self) -> Self::PKnM;
-	// fn messages_and_publickeys<'a>(&'s self) -> PKnM<'a>
+    /// pairings, often only partially aggregated. 
+    fn messages_and_publickeys(self) -> Self::PKnM;
+    // fn messages_and_publickeys<'a>(&'s self) -> PKnM<'a>
     // -> impl Iterator<Item = (&'a Self::M, &'a Self::E::PublicKeyGroup)> + 'a;
 
     /// Appropriate BLS signature verification for the `Self` type.
-	///
-	/// We use `verify_simple` as a default implementation because
-	/// it supports unstable `self.messages_and_publickeys()` securely
-	/// by calling it only once, and does not expect pulic key points
-	/// to be normalized, but this should usually be replaced by more
-	/// optimized variants. 
+    ///
+    /// We use `verify_simple` as a default implementation because
+    /// it supports unstable `self.messages_and_publickeys()` securely
+    /// by calling it only once, and does not expect pulic key points
+    /// to be normalized, but this should usually be replaced by more
+    /// optimized variants. 
     fn verify(self) -> bool {
-		verify_simple(self)
+        verify_simple(self)
     }
 }
 
@@ -303,11 +303,11 @@ pub trait Signed: Sized {
 /// Simple unoptimized BLS signature verification.  Useful for testing.
 pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
     let signature = s.signature().0.into_affine().prepare();
-	let prepared = s.messages_and_publickeys()
-	    .map(|(message,public_key)| {
-		    (public_key.borrow().0.into_affine().prepare(),
-		     message.borrow().hash_to_signature_curve::<S::E>().into_affine().prepare())
-	    }).collect::<Vec<(_,_)>>();
+    let prepared = s.messages_and_publickeys()
+        .map(|(message,public_key)| {
+            (public_key.borrow().0.into_affine().prepare(),
+             message.borrow().hash_to_signature_curve::<S::E>().into_affine().prepare())
+        }).collect::<Vec<(_,_)>>();
     S::E::verify_prepared(
         & signature,
         prepared.iter().map(|(m,pk)| (m,pk))
@@ -324,23 +324,23 @@ pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
 /// by combining repeated messages or signers. 
 pub fn verify_simple<S: Signed>(s: S) -> bool {
     let signature = s.signature().0;
-	// We could write this more idiomatically using iterator adaptors,
-	// and avoiding an unecessary allocation for publickeys, but only
-	// by calling self.messages_and_publickeys() repeatedly.
-	let itr = s.messages_and_publickeys();
+    // We could write this more idiomatically using iterator adaptors,
+    // and avoiding an unecessary allocation for publickeys, but only
+    // by calling self.messages_and_publickeys() repeatedly.
+    let itr = s.messages_and_publickeys();
     let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
-	let mut gpk = Vec::with_capacity(l);
-	let mut gms = Vec::with_capacity(l+1);
+    let mut gpk = Vec::with_capacity(l);
+    let mut gms = Vec::with_capacity(l+1);
     for (message,publickey) in itr {
-		gpk.push( publickey.borrow().0.clone() );
-    	gms.push( message.borrow().hash_to_signature_curve::<S::E>() );
+        gpk.push( publickey.borrow().0.clone() );
+        gms.push( message.borrow().hash_to_signature_curve::<S::E>() );
     }
-	<<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(gpk.as_mut_slice());
-	gms.push(signature);
-	<<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(gms.as_mut_slice());
+    <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(gpk.as_mut_slice());
+    gms.push(signature);
+    <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(gms.as_mut_slice());
     let signature = gms.pop().unwrap().into_affine().prepare();
-	let prepared = gpk.iter().zip(gms)
-	    .map(|(pk,m)| { (pk.into_affine().prepare(), m.into_affine().prepare()) })
+    let prepared = gpk.iter().zip(gms)
+        .map(|(pk,m)| { (pk.into_affine().prepare(), m.into_affine().prepare()) })
         .collect::<Vec<(_,_)>>();
     S::E::verify_prepared( &signature, prepared.iter().map(|(m,pk)| (m,pk)) )
 }
@@ -423,12 +423,12 @@ fn verify_with_gaussian_elimination<S: Signed>(s: S) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
     use pairing::bls12_381::Bls12;
     use rand::{SeedableRng, XorShiftRng};
 
     // #[test]
-	// fn foo() { }
+    // fn foo() { }
 }
 
