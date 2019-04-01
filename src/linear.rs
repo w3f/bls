@@ -9,7 +9,7 @@ use std::iter::once;
 use super::*;
 
 
-// DISTINCT MESSAGES //
+// Distinct Messages //
 
 #[derive(Debug)]
 pub struct AggregationAttackViaDuplicateMessages;
@@ -200,10 +200,10 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 }
 
 
-// PROOF-OF-POSSESION //
+// Proof-of-Possession //
 
 /// Messages with attached BLS signatures from signers who previously
-/// provided proofs-of-possesion.
+/// provided proofs-of-possession.
 ///
 /// We say a signer has provided a proof-of-possession if the
 /// verifier knows they have signed some other message.  In practice,
@@ -219,7 +219,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 ///
 /// In principle, we could combine proof-of-possession with distinct
 /// message assumptions, or other aggregation strategies, when
-/// verifiers have only observed a subset of the proofs-of-possesion,
+/// verifiers have only observed a subset of the proofs-of-possession,
 /// but this sounds complex or worse fragile.
 ///
 /// TODO: Implement gaussian elimination verification scheme.
@@ -281,11 +281,65 @@ impl<'a,E: EngineBLS> Signed for &'a AggregatedByProofsOfPossession<E> {
 }
 
 
+// Bitfield-srtyle Proof //
+
+pub enum BitPoPError {
+    MismatchedPoP,
+    RepeatedSigners,
+}
+
+#[derive(Clone)]
 pub struct BitPoPSignedMessage<E: EngineBLS, POP: Borrow<[PublicKey<E>]>> {
-    proofs_of_possesion: POP,
+    proofs_of_possession: POP,
     signers: Vec<u8>,
     message: Message,
     signature: Signature<E>,
+}
+
+// Slice equality with bytewise equality hack because
+// std does not expose `slice::BytewiseEquality`
+fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
+    if x.len() != y.len() { return false; }
+    if ::std::ptr::eq(x,y) { return true; }
+    x == y
+}
+
+impl<E,POP> BitPoPSignedMessage<E,POP> 
+where
+    E: EngineBLS,
+    POP: Borrow<[PublicKey<E>]>,
+{
+    pub fn new(proofs_of_possession: POP, message: Message) -> BitPoPSignedMessage<E,POP> {
+        let signers = vec![0u8; proofs_of_possession.borrow().len()];
+		let signature = Signature(E::SignatureGroup::zero());
+    	BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
+    }
+
+    fn add(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
+        let i = self.proofs_of_possession.borrow().iter()
+            .position(|pk| *pk==publickey)
+            .ok_or(BitPoPError::MismatchedPoP) ?;
+        let b = (1 << (i % 8));
+        let mut s = &mut self.signers[i / 8];
+        if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
+        *s |= b;
+        self.signature.0.add_assign(&signature.0);
+        Ok(())
+    }
+
+    fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
+        if ! slice_eq_bytewise(self.proofs_of_possession.borrow(), other.proofs_of_possession.borrow()) {
+            return Err(BitPoPError::MismatchedPoP);
+        }
+        if self.signers.iter().zip(&other.signers[..]).any(|(x,y)| *x & *y != 0) {
+            return Err(BitPoPError::RepeatedSigners);
+        }
+        for (x,y) in self.signers.iter_mut().zip(&other.signers[..]) {
+            *x |= y;
+        }
+        self.signature.0.add_assign(&other.signature.0);
+        Ok(())
+    }
 }
 
 impl<'a,E,POP> Signed for &'a BitPoPSignedMessage<E,POP> 
@@ -302,7 +356,7 @@ where
 
 	fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
-        for (i,pop_pk) in self.proofs_of_possesion.borrow().iter().enumerate() {
+        for (i,pop_pk) in self.proofs_of_possession.borrow().iter().enumerate() {
             if self.signers[i / 8] & (1 << (i % 8)) != 0 {
                 publickey.add_assign(&pop_pk.0);
             }

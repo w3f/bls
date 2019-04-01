@@ -191,6 +191,16 @@ impl<E: EngineBLS> Clone for $wrapper<E> {
 }
 impl<E: EngineBLS> Copy for $wrapper<E> { }
 
+impl<E: EngineBLS>  PartialEq<Self> for $wrapper<E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl <E: EngineBLS> Eq for $wrapper<E> {}
+
+// TODO: PartialOrd & Ord
+
     }
 }  // macro_rules!
 
