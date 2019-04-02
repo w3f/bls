@@ -283,6 +283,14 @@ impl<'a,E: EngineBLS> Signed for &'a AggregatedByProofsOfPossession<E> {
 
 // Bitfield-srtyle Proof //
 
+// Slice equality with bytewise equality hack because
+// std does not expose `slice::BytewiseEquality`
+fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
+    if x.len() != y.len() { return false; }
+    if ::std::ptr::eq(x,y) { return true; }
+    x == y
+}
+
 pub enum BitPoPError {
     MismatchedPoP,
     RepeatedSigners,
@@ -296,13 +304,6 @@ pub struct BitPoPSignedMessage<E: EngineBLS, POP: Borrow<[PublicKey<E>]>> {
     signature: Signature<E>,
 }
 
-// Slice equality with bytewise equality hack because
-// std does not expose `slice::BytewiseEquality`
-fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
-    if x.len() != y.len() { return false; }
-    if ::std::ptr::eq(x,y) { return true; }
-    x == y
-}
 
 impl<E,POP> BitPoPSignedMessage<E,POP> 
 where
@@ -310,7 +311,7 @@ where
     POP: Borrow<[PublicKey<E>]>,
 {
     pub fn new(proofs_of_possession: POP, message: Message) -> BitPoPSignedMessage<E,POP> {
-        let signers = vec![0u8; proofs_of_possession.borrow().len()];
+        let signers = vec![0u8; proofs_of_possession.borrow().len() / 8];
         let signature = Signature(E::SignatureGroup::zero());
         BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
     }
