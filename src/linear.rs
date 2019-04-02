@@ -315,11 +315,11 @@ where
         BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
     }
 
-    fn add(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
+    pub fn add(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
         let i = self.proofs_of_possession.borrow().iter()
             .position(|pk| *pk==publickey)
             .ok_or(BitPoPError::MismatchedPoP) ?;
-        let b = (1 << (i % 8));
+        let b = 1 << (i % 8);
         let mut s = &mut self.signers[i / 8];
         if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
         *s |= b;
@@ -327,7 +327,7 @@ where
         Ok(())
     }
 
-    fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
+    pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
         if ! slice_eq_bytewise(self.proofs_of_possession.borrow(), other.proofs_of_possession.borrow()) {
             return Err(BitPoPError::MismatchedPoP);
         }
