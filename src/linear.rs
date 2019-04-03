@@ -31,21 +31,26 @@ impl ::std::error::Error for AggregationAttackViaDuplicateMessages {
 /// Distinct messages with attached BLS signature
 /// 
 /// We can aggregate BLS signatures on distinct messages without
-/// additional assuptions.  There is not necessarily an asymptotic
-/// improvement in running time with this because verification
-/// still requires one pairing per message, unless signers are
-/// fequently repeated, so our verification code is optimized
-/// for finding duplicate signers. 
+/// additional assuptions or delinearization.  In this variant, there
+/// is obviously no aggregation on the signature curve, so verification
+/// still requires one pairing per message.  We can however aggregate
+/// numerous messages with the same signer, so this works well when
+/// a small signer set signs numerous messages, even if the signer set
+/// remains unknown.
 ///
-/// We note that messages generated simultanioiusly by the same signer
-/// can be batched or aggregated faster with other systems, incuding
+/// We also of course benifit from running one single Miller loop and
+/// final exponentiation when compiuting all these pairings.  We note
+/// that proofs of possession are necessarily distinct messages because
+/// the message singles out the signing key uniquely, so they may be
+/// aggregated or batch verified with distinct message mode.
+///
+/// As an aside, almost all signature schemes permit support extremely
+/// efficent signer side batching, which normally out performs BLS. 
+/// It's ocasioanlly worth asking if signers can be trusted to such
+/// collected signatures.  See also:
 /// - RSA:  https://eprint.iacr.org/2018/082.pdf
 /// - Boneh-Boyen:  https://crypto.stanford.edu/~dabo/papers/bbsigs.pdf
 ///     http://sci-gems.math.bas.bg:8080/jspui/bitstream/10525/1569/1/sjc096-vol3-num3-2009.pdf
-///
-/// TODO:  Insecure currently because if a developer does not check
-/// the return of add or merge then they can think a signature means
-/// something incorrect.
 #[derive(Clone)]
 pub struct DistinctMessages<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
@@ -109,7 +114,6 @@ impl<E: EngineBLS> DistinctMessages<E> {
         Ok(self)
     }
 }
-
 
 impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
     type E = E;
