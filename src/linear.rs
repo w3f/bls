@@ -3,6 +3,7 @@
 //! We handle linear flavors of a aggregate BLS signatures here,
 //! including both distinct messages and proof-of-possesion.
 
+use std::borrow::{Borrow,BorrowMut};
 use std::collections::HashMap;
 use std::iter::once;
 
@@ -295,51 +296,103 @@ fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
     x == y
 }
 
+pub trait ProofsOfPossession<E: EngineBLS> {
+    /// Returns true if two ProofsOfPossession databases match exactly.
+    ///
+    /// We could employ a PartialEq<Self> + Eq bound for this, except
+    /// those are frequently slow even for small for databases.
+    fn agreement(&self, other: &Self) -> bool;
+
+    /// Bitfield type used to represent a signers set
+    ///
+    /// Must not permit altering length, so `Box<[u8]>` or `[u8; 128]` not `Vec<u8>`.
+    type Signers: Borrow<[u8]>+BorrowMut<[u8]>+Clone+Sized;
+    /// Create a new signers set bitfield
+    fn new_signers(&self) -> Self::Signers;
+
+    /// Lookup an 
+    ///
+    /// Must succeed if `index < signers.borrow().len()`, 
+    /// 
+    /// also should panic if `index > signers.borrow().len()`.
+    fn lookup(&self, index: usize) -> Option<PublicKey<E>>;
+
+    fn find(&self, publickey: &PublicKey<E>) -> Option<usize>;
+}
+
+/// TODO: Use specialization here
+impl<E,V> ProofsOfPossession<E> for V 
+where
+    E: EngineBLS,
+    V: ::std::ops::Deref<Target=[PublicKey<E>]>
+{
+    fn agreement(&self, other: &Self) -> bool {
+        slice_eq_bytewise(self.deref(),other.deref())
+    }
+
+    type Signers = Box<[u8]>;
+    fn new_signers(&self) -> Self::Signers {
+        vec![0u8; self.deref().len() / 8].into_boxed_slice()
+    }
+
+    fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
+        self.deref().get(index).cloned()
+    }
+    fn find(&self, publickey: &PublicKey<E>) -> Option<usize> {
+        self.deref().iter().position(|pk| *pk==*publickey)
+    }
+}
+
 pub enum BitPoPError {
-    MismatchedPoP,
+    BadPoP(&'static str),
     RepeatedSigners,
 }
 
 #[derive(Clone)]
-pub struct BitPoPSignedMessage<E: EngineBLS, POP: Borrow<[PublicKey<E>]>> {
+pub struct BitPoPSignedMessage<E: EngineBLS, POP: ProofsOfPossession<E>> {
     proofs_of_possession: POP,
-    signers: Vec<u8>,
+    signers: <POP as ProofsOfPossession<E>>::Signers,
     message: Message,
     signature: Signature<E>,
 }
 
-
 impl<E,POP> BitPoPSignedMessage<E,POP> 
 where
     E: EngineBLS,
-    POP: Borrow<[PublicKey<E>]>,
+    POP: ProofsOfPossession<E>,
 {
     pub fn new(proofs_of_possession: POP, message: Message) -> BitPoPSignedMessage<E,POP> {
-        let signers = vec![0u8; proofs_of_possession.borrow().len() / 8];
+        let signers = proofs_of_possession.new_signers();
         let signature = Signature(E::SignatureGroup::zero());
         BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
     }
 
     pub fn add(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
-        let i = self.proofs_of_possession.borrow().iter()
-            .position(|pk| *pk==publickey)
-            .ok_or(BitPoPError::MismatchedPoP) ?;
+        let i = self.proofs_of_possession.find(&publickey)
+            .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
         let b = 1 << (i % 8);
-        let mut s = &mut self.signers[i / 8];
+        let s = &mut self.signers.borrow_mut()[i / 8];
         if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
         *s |= b;
         self.signature.0.add_assign(&signature.0);
         Ok(())
     }
 
+    fn chunk_lookup(&self, index: usize) -> u8 {
+        (0..8).into_iter().fold(0u8, |b,j| {
+            b | self.proofs_of_possession.lookup(8*index + j).map_or(1u8 << j, |_| 0u8)
+        })
+    }
+
     pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
-        if ! slice_eq_bytewise(self.proofs_of_possession.borrow(), other.proofs_of_possession.borrow()) {
-            return Err(BitPoPError::MismatchedPoP);
+        if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
+            return Err(BitPoPError::BadPoP("Mismatched proof-of-possession"));
         }
-        if self.signers.iter().zip(&other.signers[..]).any(|(x,y)| *x & *y != 0) {
-            return Err(BitPoPError::RepeatedSigners);
+        for (i,(x,y)) in self.signers.borrow().iter().zip(other.signers.borrow()).enumerate() {
+            if *x & *y != 0 { return Err(BitPoPError::RepeatedSigners); }
+            if *y & self.chunk_lookup(i) != 0 { return Err(BitPoPError::BadPoP("Absent signer")); }
         }
-        for (x,y) in self.signers.iter_mut().zip(&other.signers[..]) {
+        for (x,y) in self.signers.borrow_mut().iter_mut().zip(other.signers.borrow()) {
             *x |= y;
         }
         self.signature.0.add_assign(&other.signature.0);
@@ -350,7 +403,7 @@ where
 impl<'a,E,POP> Signed for &'a BitPoPSignedMessage<E,POP> 
 where
     E: EngineBLS,
-    POP: Borrow<[PublicKey<E>]>,
+    POP: ProofsOfPossession<E>,
 {
     type E = E;
 
@@ -361,9 +414,10 @@ where
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
-        for (i,pop_pk) in self.proofs_of_possession.borrow().iter().enumerate() {
-            if self.signers[i / 8] & (1 << (i % 8)) != 0 {
-                publickey.add_assign(&pop_pk.0);
+        for i in 0..8*self.signers.borrow().len() {
+            if self.signers.borrow()[i / 8] & (1 << (i % 8)) != 0 {
+                let pop_pk = self.proofs_of_possession.lookup(i).unwrap().0;
+                publickey.add_assign(&pop_pk);
             }
         }
         once((self.message.clone(), PublicKey(publickey)))
