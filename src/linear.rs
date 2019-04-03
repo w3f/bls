@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::iter::once;
 
 use super::*;
-
+use super::verifiers::verify_with_distinct_messages;
 
 // Distinct Messages //
 
@@ -132,76 +132,6 @@ impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
     fn verify(self) -> bool {
         verify_with_distinct_messages(self, false)
     }
-}
-
-
-/// BLS signature verification optimized for all unique messages
-///
-/// Assuming all messages are distinct, the minimum number of pairings
-/// is the number of unique signers, which we achieve here. 
-/// We do not verify message uniqueness here, but leave this to the
-/// aggregate signature type, like `DistinctMessages`.
-///
-/// We merge any messages with identical signers and batch normalize
-/// message points and the signature itself. 
-/// We optionally batch normalize the public keys in the event that
-/// they are provided by algerbaic operaations, but this sounds
-/// unlikely given our requirement that messages be distinct.
-pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys: bool) -> bool {
-    let signature = signed.signature().0;
-    // We first hash the messages to the signature curve and
-    // normalize the public keys to operate on them as bytes.
-    // TODO: Assess if we should mutate in place using interior
-    // mutability, maybe using `BorrowMut` support in
-    // `batch_normalization`.
-    let itr = signed.messages_and_publickeys();
-    let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
-    let mut publickeys = Vec::with_capacity(l);
-    let mut messages = Vec::with_capacity(l+1);
-    for (m,pk) in itr {
-        publickeys.push( pk.borrow().0.clone() );
-        messages.push( m.borrow().hash_to_signature_curve::<S::E>() );
-    }
-    if normalize_public_keys {
-        <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(publickeys.as_mut_slice());
-    }
-
-    // We next accumulate message points with the same signer.
-    // We could avoid the allocation here if we sorted both 
-    // arrays in parallel.  This might mean (a) some sort function
-    // using `ops::IndexMut` instead of slices, and (b) wrapper types
-    // types to make tuples of slices satisfy `ops::IndexMut`.
-    // TODO:  Impl PartialEq, Eq, Hash for pairing::EncodedPoint
-    // to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
-    type AA<E> = (PublicKeyAffine<E>, SignatureProjective<E>);
-    let mut pks_n_ms = HashMap::with_capacity(l);
-    for (pk,m) in publickeys.drain(..)
-                            .map(|pk| pk.into_affine())
-                            .zip(messages.drain(..)) 
-    {
-        pks_n_ms.entry(pk.into_uncompressed())
-                .and_modify(|(_pk0,m0): &mut AA<S::E>| m0.add_assign(&m) )
-                .or_insert((pk,m));
-    }
-
-    let mut publickeys = Vec::with_capacity(l);
-    for (_,(pk,m)) in pks_n_ms.drain() {
-        messages.push(m);
-        publickeys.push(pk.prepare());
-    }
-
-    // We finally normalize the messages and signature
-    messages.push(signature);
-    <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(messages.as_mut_slice());
-    let signature = messages.pop().unwrap().into_affine().prepare();
-    // TODO: Assess if we could cache normalized message hashes anyplace
-    // using interior mutability, but probably this does not work well
-    // with our optimization of collecting messages with thesame signer.
-
-    // And verify the aggregate signature.
-    let messages = messages.iter().map(|m| m.into_affine().prepare()).collect::<Vec<_>>();
-    let prepared = publickeys.iter().zip(&messages);
-    S::E::verify_prepared( &signature, prepared )
 }
 
 
