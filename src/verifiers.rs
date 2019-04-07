@@ -1,4 +1,4 @@
-//! Aggregation algorithms for BLS signatures
+//! Algorithms for optimized verification of Aggregate BLS signature
 //!
 //!
 //!

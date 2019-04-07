@@ -10,8 +10,16 @@ use std::iter::once;
 use super::*;
 use super::verifiers::verify_with_distinct_messages;
 
+
 // Distinct Messages //
 
+/// Error tyoe for non-distinct messages found during distinct
+/// message aggregation.
+///
+/// There are numerous scenarios that make recovery from such errors
+/// impossible.  We therefore destroy the aggregate signature struct
+/// whenever creating this, so that users cannot respond incorrectly
+/// to an error message.
 #[derive(Debug)]
 pub struct AggregationAttackViaDuplicateMessages;
 
@@ -27,7 +35,6 @@ impl ::std::error::Error for AggregationAttackViaDuplicateMessages {
     }
     fn cause(&self) -> Option<&::std::error::Error> { None }
 }
-
 
 /// Distinct messages with attached BLS signature
 /// 
@@ -137,8 +144,8 @@ impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
 
 // Proof-of-Possession //
 
-/// Messages with attached BLS signatures from signers who previously
-/// provided proofs-of-possession.
+/// Messages with attached aggreggate BLS signatures from signers
+/// for whom we previously checked proofs-of-possession.
 ///
 /// We say a signer has provided a proof-of-possession if the
 /// verifier knows they have signed some other message.  In practice,
@@ -165,7 +172,6 @@ pub struct AggregatedByProofsOfPossession<E: EngineBLS> {
 }
 // TODO: Serialization
 
-
 impl<E: EngineBLS> AggregatedByProofsOfPossession<E> {
     pub fn new() -> AggregatedByProofsOfPossession<E> {
         AggregatedByProofsOfPossession {
@@ -189,7 +195,6 @@ impl<E: EngineBLS> AggregatedByProofsOfPossession<E> {
         self.signature.0.add_assign(&signature);
     }
 }
-
 
 impl<'a,E: EngineBLS> Signed for &'a AggregatedByProofsOfPossession<E> {
     type E = E;
@@ -216,7 +221,7 @@ impl<'a,E: EngineBLS> Signed for &'a AggregatedByProofsOfPossession<E> {
 }
 
 
-// Bitfield-srtyle Proof //
+// Bitfield-style proof-of-possession aggreggation //
 
 // Slice equality with bytewise equality hack because
 // std does not expose `slice::BytewiseEquality`
@@ -226,6 +231,9 @@ fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
     x == y
 }
 
+/// Proof-of-possession table
+///
+/// We provide a signers bitfield for efficent 
 pub trait ProofsOfPossession<E: EngineBLS> {
     /// Returns true if two ProofsOfPossession databases match exactly.
     ///
@@ -273,11 +281,23 @@ where
     }
 }
 
+/// Error type for bitfield-style proof-of-possession aggreggation
+///
+/// These do not necessarily represent attacks pr se.  We therefore
+/// permit users to recover from them, although actual recovery sounds
+/// impossible nomrally.
 pub enum BitPoPError {
+    /// Any unrecoverable error that indicates missmatched proof-of-possession tables. 
     BadPoP(&'static str),
+    /// Aggregation is impossible due to signers being repeated in both sets.
     RepeatedSigners,
 }
 
+/// One individual message with attached aggreggate BLS signatures
+/// from signers for whom we previously checked proofs-of-possession,
+/// and with the singers presented as a compact bitfield.
+///
+///
 #[derive(Clone)]
 pub struct BitPoPSignedMessage<E: EngineBLS, POP: ProofsOfPossession<E>> {
     proofs_of_possession: POP,
