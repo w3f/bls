@@ -243,8 +243,8 @@ pub trait ProofsOfPossession<E: EngineBLS> {
 
     /// Bitfield type used to represent a signers set
     ///
-    /// Must not permit altering length, so `Box<[u64]>` or `[u64; 128]` not `Vec<u64>`.
-    type Signers: Borrow<[u64]>+BorrowMut<[u64]>+Clone+Sized;
+    /// Must not permit altering length, so `Box<[u8]>` or `[u8; 128]` not `Vec<u8>`.
+    type Signers: Borrow<[u8]>+BorrowMut<[u8]>+Clone+Sized;
     /// Create a new signers set bitfield
     fn new_signers(&self) -> Self::Signers;
 
@@ -268,9 +268,9 @@ where
         slice_eq_bytewise(self.deref(),other.deref())
     }
 
-    type Signers = Box<[u64]>;
+    type Signers = Box<[u8]>;
     fn new_signers(&self) -> Self::Signers {
-        vec![0u64; self.deref().len() / 64].into_boxed_slice()
+        vec![0u8; self.deref().len() / 8].into_boxed_slice()
     }
 
     fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
@@ -320,17 +320,17 @@ where
     pub fn add(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
         let i = self.proofs_of_possession.find(&publickey)
             .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
-        let b = 1 << (i % 64);
-        let s = &mut self.signers.borrow_mut()[i / 64];
+        let b = 1 << (i % 8);
+        let s = &mut self.signers.borrow_mut()[i / 8];
         if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
         *s |= b;
         self.signature.0.add_assign(&signature.0);
         Ok(())
     }
 
-    fn chunk_lookup(&self, index: usize) -> u64 {
-        (0..64).into_iter().fold(0u64, |b,j| {
-            b | self.proofs_of_possession.lookup(64*index + j).map_or(1u64 << j, |_| 0u64)
+    fn chunk_lookup(&self, index: usize) -> u8 {
+        (0..8).into_iter().fold(0u8, |b,j| {
+            b | self.proofs_of_possession.lookup(8*index + j).map_or(1u8 << j, |_| 0u8)
         })
     }
 
