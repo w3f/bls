@@ -3,6 +3,9 @@
 // #![feature(generic_associated_types)]
 #![feature(associated_type_defaults)]
 
+// #[macro_use]
+extern crate ff;
+
 extern crate merlin;
 extern crate pairing;
 extern crate rand;
@@ -10,7 +13,8 @@ extern crate rand;
 
 use std::borrow::Borrow;
 
-use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, SqrtField};
+use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
+use pairing::{CurveAffine, CurveProjective, Engine};
 use rand::{Rand, Rng};
 
 pub mod single;
@@ -69,8 +73,8 @@ impl<'a> From<&'a [u8]> for Message {
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
 pub trait EngineBLS {
-    type Engine: Engine<Fr = Self::Scalar>;
-    type Scalar: PrimeField + SqrtField;
+    type Engine: Engine + ScalarEngine<Fr = Self::Scalar>;
+    type Scalar: PrimeField + SqrtField; // = <Self::Engine as ScalarEngine>::Fr;
 
     /// Group where BLS public keys live
     /// 
@@ -182,7 +186,7 @@ pub struct UsualBLS<E: Engine>(pub E);
 
 impl<E: Engine> EngineBLS for UsualBLS<E> {
     type Engine = E;
-    type Scalar = <Self::Engine as Engine>::Fr;
+    type Scalar = <Self::Engine as ScalarEngine>::Fr;
     type PublicKeyGroup = E::G1;
     type SignatureGroup = E::G2;
 
@@ -223,7 +227,7 @@ pub struct TinyBLS<E: Engine>(pub E);
 
 impl<E: Engine> EngineBLS for TinyBLS<E> {
     type Engine = E;
-    type Scalar = <Self::Engine as Engine>::Fr;
+    type Scalar = <Self::Engine as ScalarEngine>::Fr;
     type PublicKeyGroup = E::G2;
     type SignatureGroup = E::G1;
 

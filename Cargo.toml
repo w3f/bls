@@ -10,6 +10,7 @@ version = "0.0.1"
 
 [dependencies]
 rand = "0.4.0"
+ff = { version = "0.4", features = ["derive"] }
 # sha3 = "0.8"
 
 [dependencies.merlin] 
@@ -18,6 +19,7 @@ version = "1.0.0"
 
 [dependencies.pairing]
 git = "https://github.com/burdges/pairing"
-branch = "derives_borrows_etc0"
+branch = "master-hashing-derives_borrows_etc0"
+# branch = "derives_borrows_etc0"
 # git = "https://github.com/mmaker/pairing"
 # branch = "master"
