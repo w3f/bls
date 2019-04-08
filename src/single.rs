@@ -24,7 +24,7 @@
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
 use pairing::{CurveAffine, CurveProjective, Field};  // Engine, PrimeField, SqrtField
-use rand::{Rand, Rng, thread_rng};
+use rand::{Rng, thread_rng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 // use rand_chacha::ChaChaRng;
 

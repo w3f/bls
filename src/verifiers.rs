@@ -8,7 +8,6 @@ use std::collections::HashMap;
 // use std::hash::Hash;  // Hasher
 
 use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, SqrtField
-use rand::{Rand, Rng};
 
 use super::*;
 
