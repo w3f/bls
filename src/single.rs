@@ -25,7 +25,7 @@
 
 use ff::{Field}; // PrimeField, ScalarEngine, SqrtField
 use pairing::{CurveAffine, CurveProjective};  // Engine, PrimeField, SqrtField
-use rand::{Rng, thread_rng};
+use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 // use rand_chacha::ChaChaRng;
 
@@ -373,7 +373,7 @@ impl<E: EngineBLS> SignedMessage<E> {
         seed
     }
 
-    /* TODO: Add once we upgrade rand
+    /* TODO: Switch to this whenever pairing upgrades to rand 0.5 or later
     /// VRF output converted into any `SeedableRng`.
     ///
     /// If you are not the signer then you must verify the VRF before calling this method.
@@ -382,6 +382,7 @@ impl<E: EngineBLS> SignedMessage<E> {
     pub fn make_rng<R: SeedableRng>(&self, context: &'static [u8]) -> R {
         R::from_seed(self.make_bytes::<R::Seed>(context))
     }
+    */
 
     /// VRF output converted into a `ChaChaRng`.
     ///
@@ -395,9 +396,17 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// ["Ouroboros Praos: An adaptively-secure, semi-synchronous proof-of-stake blockchain"](https://eprint.iacr.org/2017/573.pdf)
     /// by Bernardo David, Peter Gazi, Aggelos Kiayias, and Alexander Russell.
     pub fn make_chacharng(&self, context: &'static [u8]) -> ChaChaRng {
-        self.make_rng::<ChaChaRng>(context)
+        // self.make_rng::<ChaChaRng>(context)
+        // TODO: Remove this ugly hack whenever rand gets updated to 0.5 or later
+        let bytes = self.make_bytes::<[u8;32]>(context);
+        let mut words = [0u32; 8];
+        for (w,bs) in words.iter_mut().zip(bytes.chunks(4)) {
+            let mut b = [0u8; 4];
+            b.copy_from_slice(bs);
+            *w = u32::from_le_bytes(b);
+        }
+        ChaChaRng::from_seed(&words)
     }
-    */
 }
 
 

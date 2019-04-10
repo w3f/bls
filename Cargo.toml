@@ -9,7 +9,7 @@ repository = "https://github.com/str4d/bls"
 version = "0.0.1"
 
 [dependencies]
-rand = "0.4.0"
+rand = "0.4"
 ff = { version = "0.4", features = ["derive"] }
 # sha3 = "0.8"
 
