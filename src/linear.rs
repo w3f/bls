@@ -392,8 +392,7 @@ where
 mod tests {
     use super::*;
 
-    use pairing::bls12_381::Bls12;
-    use rand::{SeedableRng, XorShiftRng};
+    // use rand::{SeedableRng, XorShiftRng};
 
     // #[test]
     // fn foo() { }

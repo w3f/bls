@@ -79,15 +79,19 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// This works because `self.0 * H(message) + self.1 * H(message) = (self.0 + self.1) * H(message)`
 ///
 /// We require mutable access to the secret key, but interior mutability
-/// can easily be employed.  If `secret: RefCell<SecretKey>` this might resemble:
+/// can easily be employed, which might resemble:
 /// ```rust,no_run
-/// let mut s = secret.borrow().clone();
-/// let signature = s.sign(message,OsRng);
-/// secret.replace(s);
+/// # extern crate bls;
+/// # extern crate rand;
+/// # use bls::{SecretKey,ZBLS,Message};
+/// # use rand::thread_rng;
+/// # let message = Message::new(b"ctx",b"test message");
+/// let mut secret = ::std::cell::RefCell::new(SecretKey::<ZBLS>::generate(thread_rng()));
+/// let signature = secret.borrow_mut().sign(message,thread_rng());
 /// ```
 /// If however `secret: Mutex<SecretKey>` or `secret: RwLock<SecretKey>`
 /// then one might avoid holding the write lock while signing, or even
-/// while sampling the random numbers, possibly using `sign_with`.
+/// while sampling the random numbers by using other methods.
 ///
 /// TODO: Is Pippenger’s algorithm, or another fast MSM algorithm,
 /// secure when used with key splitting?
@@ -240,7 +244,11 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
 
-// impl<E: EngineBLS> PublicKey<E> {  }
+impl<E: EngineBLS> PublicKey<E> {
+    pub fn verify(&self, message: Message, signature: &Signature<E>) -> bool {
+        signature.verify(message,self)
+    }
+}
 
 
 
@@ -266,7 +274,7 @@ impl<E: EngineBLS> KeypairVT<E> {
     }
 
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
-    pub fn sign<R: Rng>(&self, message: Message) -> SignedMessage<E> {
+    pub fn sign(&self, message: Message) -> SignedMessage<E> {
         let signature = self.secret.sign(message);  
         SignedMessage {
             message,
@@ -296,6 +304,14 @@ impl<E: EngineBLS> Keypair<E> {
         let secret = SecretKey::generate(rng);
         let public = secret.into_public();
         Keypair { secret, public }
+    }
+
+    /// Create a representative usable for operations lacking 
+    /// side channel protections.  
+    pub fn into_vartime(&self) -> KeypairVT<E> {
+        let secret = self.secret.into_vartime();
+        let public = self.public;
+        KeypairVT { secret, public }
     }
 
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
@@ -329,6 +345,16 @@ pub struct SignedMessage<E: EngineBLS> {
 // borrow_wrapper!(Signature,SignatureGroup,signature);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,publickey);
 
+impl<E: EngineBLS>  PartialEq<Self> for SignedMessage<E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.message.eq(&other.message)
+        && self.publickey.eq(&other.publickey)
+        && self.signature.eq(&other.signature)
+    }
+}
+
+impl <E: EngineBLS> Eq for SignedMessage<E> {}
+
 impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
     type E = E;
 
@@ -349,6 +375,12 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 }
 
 impl<E: EngineBLS> SignedMessage<E> {
+    fn verify_slow(&self) -> bool {
+        let mut g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::one();
+        let message = self.message.hash_to_signature_curve::<E>().into_affine();
+        E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
+    }
+
     /// Raw bytes output from a BLS signature regarded as a VRF.
     ///
     /// If you are not the signer then you must verify the VRF before calling this method.
@@ -417,6 +449,28 @@ mod tests {
     use pairing::bls12_381::Bls12;
     use rand::{SeedableRng, XorShiftRng};
 
-    // #[test]
-    // fn foo() { }
+    #[test]
+    fn sign_verify_bytes() {
+        let good = Message::new(b"ctx",b"test message");
+        let bad = Message::new(b"ctx",b"wrong message");
+
+        let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
+        let good_sig = keypair.sign(good);
+        assert!( good_sig == keypair.sign(good) );
+        assert!( good_sig == keypair.into_vartime().sign(good) );
+        let bad_sig  = keypair.sign(bad);
+        assert!( bad_sig == keypair.into_vartime().sign(bad) );
+
+        assert!(good_sig.verify_slow());
+        
+        assert!(keypair.public.verify(good, &good_sig.signature),
+                "Verification of a valid signature failed!");
+
+        assert!(!keypair.public.verify(good, &bad_sig.signature),
+                "Verification of a signature on a different message passed!");
+        assert!(!keypair.public.verify(bad, &good_sig.signature),
+                "Verification of a signature on a different message passed!");
+        assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
+                "Verification of a signature on a different message passed!");
+    }
 }

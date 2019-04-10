@@ -22,7 +22,9 @@ pub mod linear;
 pub mod verifiers;
 // pub mod delinear;
 
+
 pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
+
 
 /// Internal message hash size.  
 ///
@@ -155,8 +157,7 @@ pub trait EngineBLS {
         Self::final_exponentiation( & Self::miller_loop(
             inputs.into_iter().map(|t| t)  // reborrow hack
                 .chain(::std::iter::once( (& g1_minus_generator.prepare(), signature) ))
-                // .chain(&[ (& g1_minus_generator.prepare(), signature) ])
-        ) ).unwrap().is_zero() // == E::Fqk::zero()
+        ) ).unwrap() == <Self::Engine as Engine>::Fqk::one()
     }
 }
 
@@ -166,6 +167,7 @@ pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as CurveProjecti
 
 pub type SignatureProjective<E> = <E as EngineBLS>::SignatureGroup;
 pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveProjective>::Affine;
+
 
 
 
@@ -307,8 +309,7 @@ pub trait Signed: Sized {
 mod tests {
     use super::*;
 
-    use pairing::bls12_381::Bls12;
-    use rand::{SeedableRng, XorShiftRng};
+    // use rand::{SeedableRng, XorShiftRng};
 
     // #[test]
     // fn foo() { }
