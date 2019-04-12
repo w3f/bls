@@ -5,9 +5,10 @@
 
 use std::borrow::{Borrow,BorrowMut};
 use std::collections::HashMap;
-use std::iter::once;
+use std::iter::{once};  // FromIterator
 
 use super::*;
+use super::single::SignedMessage;
 use super::verifiers::verify_with_distinct_messages;
 
 
@@ -66,6 +67,24 @@ pub struct DistinctMessages<E: EngineBLS> {
 }
 // TODO: Serialization
 
+impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
+    type E = E;
+
+    type M = &'a Message;
+    type PKG = &'a PublicKey<Self::E>;
+    type PKnM = ::std::collections::hash_map::Iter<'a,Message,PublicKey<E>>;
+
+    fn messages_and_publickeys(self) -> Self::PKnM {
+        self.messages_n_publickeys.iter()
+    }
+
+    fn signature(&self) -> Signature<E> { self.signature }
+
+    fn verify(self) -> bool {
+        verify_with_distinct_messages(self, false)
+    }
+}
+
 /*
 We do not require an abstract aggregation routine here since only
 two quite different types work in this case.
@@ -86,8 +105,7 @@ impl<E: EngineBLS> DistinctMessages<E> {
     ///
     /// We require that duplicate message halt verification by consuming
     /// self by vaule and return it only if no duplicate occur.
-    pub fn add(mut self, signed: &super::single::SignedMessage<E>)
-      -> Result<Self,AggregationAttackViaDuplicateMessages>
+    pub fn add(mut self, signed: &SignedMessage<E>) -> DistinctMessagesResult<E>
     {
         if let Some(_old_publickey) = self.messages_n_publickeys.insert(signed.message,signed.publickey) {
             // We need not recover from this error because the hash map gets erased.
@@ -102,8 +120,7 @@ impl<E: EngineBLS> DistinctMessages<E> {
     ///
     /// We require that duplicate message halt verification by consuming
     /// self by vaule and return it only if no duplicate occur.
-    pub fn merge(mut self, signed: &DistinctMessages<E>)
-      -> Result<Self,AggregationAttackViaDuplicateMessages>
+    pub fn merge(mut self, signed: &DistinctMessages<E>) -> DistinctMessagesResult<E>
     {
         // We need not detect duplicates early for recovery because
         // duplicates cause our hashmap to be freed anyways.
@@ -123,23 +140,19 @@ impl<E: EngineBLS> DistinctMessages<E> {
     }
 }
 
-impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
-    type E = E;
+pub type DistinctMessagesResult<E> = Result<DistinctMessages<E>,AggregationAttackViaDuplicateMessages>;
 
-    type M = &'a Message;
-    type PKG = &'a PublicKey<Self::E>;
-    type PKnM = ::std::collections::hash_map::Iter<'a,Message,PublicKey<E>>;
-
-    fn messages_and_publickeys(self) -> Self::PKnM {
-        self.messages_n_publickeys.iter()
-    }
-
-    fn signature(&self) -> Signature<E> { self.signature }
-
-    fn verify(self) -> bool {
-        verify_with_distinct_messages(self, false)
+/*
+TODO: Adopt .collect::<DistinctMessagesResult<E>>() via FromIterator
+      whenever https://github.com/rust-lang/rfcs/issues/1856 gets resolved.
+impl<'a,E: EngineBLS> FromIterator<&'a SignedMessage<E>> for DistinctMessagesResult<E> {
+    fn from_iter<II>(ii: II) -> Self
+    where II: IntoIterator<Item = &'a SignedMessage<E>>,
+    {
+        ii.into_iter().try_fold(DistinctMessages::<ZBLS>::new(), |dm,sm| dm.add(sm))
     }
 }
+*/
 
 
 // Proof-of-Possession //
@@ -258,8 +271,9 @@ pub trait ProofsOfPossession<E: EngineBLS> {
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize>;
 }
 
+/// TODO: Evaluate using Deref vs Borrow in this context
 /// TODO: Use specialization here
-impl<E,V> ProofsOfPossession<E> for V 
+impl<E,V> ProofsOfPossession<E> for V
 where
     E: EngineBLS,
     V: ::std::ops::Deref<Target=[PublicKey<E>]>
@@ -395,7 +409,6 @@ mod tests {
     #[test]
     fn distinct_messages() {
         let msgs = [ Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message2"), Message::new(b"ctx",b"Message3"), Message::new(b"ctx",b"Message4") ];
-        // let bad_msg = Message::new(b"ctx",b"Oops");
 
         let k = |_| Keypair::<ZBLS>::generate(thread_rng());
         let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
@@ -403,14 +416,13 @@ mod tests {
         keypairs.push(dup);
 
         let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();  
-        // let bad_sig  = keypairs[4].sign(bad_msg);
 
         let dm_new = || DistinctMessages::<ZBLS>::new();
-        fn dm_add(dm: DistinctMessages<ZBLS>, sig: &super::single::SignedMessage<ZBLS>)
+        fn dm_add(dm: DistinctMessages<ZBLS>, sig: &SignedMessage<ZBLS>)
          -> Result<DistinctMessages<ZBLS>,AggregationAttackViaDuplicateMessages>
             { dm.add(sig) }
 
-        let dms = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
+        let mut dms = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
         assert!( dms.messages_and_publickeys().len() == 4 );
         let dms0 = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
         assert!( dms0.merge(&dms).is_err() );
@@ -425,24 +437,8 @@ mod tests {
         let dms2 = sigs.iter().skip(3).try_fold(dm_new(), dm_add).unwrap();
         assert!( dms1.merge(&dms2).unwrap().signature == dms.signature );
 
-        /*
-        assert!( good_sig == keypair.sign(good) );
-        assert!( good_sig == keypair.into_vartime().sign(good) );
-        let bad_sig  = keypair.sign(bad);
-        assert!( bad_sig == keypair.into_vartime().sign(bad) );
-
-        assert!(good_sig.verify_slow());
-    
-        assert!(keypair.public.verify(good, &good_sig.signature),
-                "Verification of a valid signature failed!");
-
-        assert!(!keypair.public.verify(good, &bad_sig.signature),
-                "Verification of a signature on a different message passed!");
-        assert!(!keypair.public.verify(bad, &good_sig.signature),
-                "Verification of a signature on a different message passed!");
-        assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
-                "Verification of a signature on a different message passed!");
-        */
+        *(dms.messages_n_publickeys.get_mut(&msgs[1]).unwrap()) = keypairs[0].public.clone();
+        assert!( ! dms.verify() , "Verification by an incorrect signer passed");
     }
 }
 
