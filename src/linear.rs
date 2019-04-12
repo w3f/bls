@@ -179,25 +179,25 @@ impl<'a,E: EngineBLS> FromIterator<&'a SignedMessage<E>> for DistinctMessagesRes
 ///
 /// TODO: Implement gaussian elimination verification scheme.
 #[derive(Clone)]
-pub struct AggregatedByProofsOfPossession<E: EngineBLS> {
+pub struct AggregatedAssumingProofsOfPossession<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
     signature: Signature<E>,
 }
 // TODO: Serialization
 
-impl<E: EngineBLS> AggregatedByProofsOfPossession<E> {
-    pub fn new() -> AggregatedByProofsOfPossession<E> {
-        AggregatedByProofsOfPossession {
+impl<E: EngineBLS> AggregatedAssumingProofsOfPossession<E> {
+    pub fn new() -> AggregatedAssumingProofsOfPossession<E> {
+        AggregatedAssumingProofsOfPossession {
             messages_n_publickeys: HashMap::new(),
             signature: Signature(E::SignatureGroup::zero()),
         }
     }
 
     /// Aggregage BLS signatures with proofs-of-possession
-    pub fn aggregate<S>(&mut self, signed: &S) 
+    pub fn aggregate<'a,S>(&mut self, signed: &'a S) 
     where
-        for<'a> &'a S: Signed<E=E>,
-        for<'a> <&'a S as Signed>::PKG: Borrow<single::PublicKey<E>>,
+        &'a S: Signed<E=E>,
+        <&'a S as Signed>::PKG: Borrow<PublicKey<E>>,
     {
         let signature : E::SignatureGroup = signed.signature().0;
         for (m,pk) in signed.messages_and_publickeys() {
@@ -209,7 +209,8 @@ impl<E: EngineBLS> AggregatedByProofsOfPossession<E> {
     }
 }
 
-impl<'a,E: EngineBLS> Signed for &'a AggregatedByProofsOfPossession<E> {
+
+impl<'a,E: EngineBLS> Signed for &'a AggregatedAssumingProofsOfPossession<E> {
     type E = E;
 
     type M = &'a Message;
@@ -261,13 +262,20 @@ pub trait ProofsOfPossession<E: EngineBLS> {
     /// Create a new signers set bitfield
     fn new_signers(&self) -> Self::Signers;
 
-    /// Lookup an 
+    /// Lookup the public key with a particular bit index.
     ///
-    /// Must succeed if `index < signers.borrow().len()`, 
-    /// 
-    /// also should panic if `index > signers.borrow().len()`.
+    /// Must succeed if `index < signers.borrow().len()`, but
+    /// should panic if `index > signers.borrow().len()`.
+    /// It may return `None` if the position is empty.
+    ///
+    /// Must satisfy `self.lookup(i).and_then(|i| self.find(i)) == Some(i)` when `i` is occupied.
     fn lookup(&self, index: usize) -> Option<PublicKey<E>>;
 
+    /// Find the bit index for a particular public key.
+    ///
+    /// Must succeed if the public key is present, and fail otherwise.
+    /// 
+    /// Must satisfy `self.find(pk).and_then(|i| self.lookup(i)) == Some(pk)` when `pk` is present.
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize>;
 }
 
@@ -284,14 +292,16 @@ where
 
     type Signers = Box<[u8]>;
     fn new_signers(&self) -> Self::Signers {
-        vec![0u8; self.deref().len() / 8].into_boxed_slice()
+        vec![0u8; (self.deref().len() + 7) / 8].into_boxed_slice()
     }
 
     fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
         self.deref().get(index).cloned()
+        // .map(|pk| { debug_assert!( Some(index) == self.find(&pk) ); pk })
     }
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize> {
         self.deref().iter().position(|pk| *pk==*publickey)
+        // .map(|i| { debug_assert!( Some(publickey) == self.lookup(i) ); i })
     }
 }
 
@@ -300,11 +310,38 @@ where
 /// These do not necessarily represent attacks pr se.  We therefore
 /// permit users to recover from them, although actual recovery sounds
 /// impossible nomrally.
+#[derive(Debug)]
 pub enum BitPoPError {
-    /// Any unrecoverable error that indicates missmatched proof-of-possession tables. 
+    /// Attempted to use missmatched proof-of-possession tables. 
     BadPoP(&'static str),
+    /// Attempted to aggregate distint messages, which requires the 
+    /// the more general AggregatedAssumingProofsOfPossession type instead.
+    MismatchedMessage,
     /// Aggregation is impossible due to signers being repeated in both sets.
     RepeatedSigners,
+}
+
+impl ::std::fmt::Display for BitPoPError {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        use self::BitPoPError::*;
+        match self {
+            BadPoP(s) => write!(f, "{}", s),
+            MismatchedMessage => write!(f, "Cannot aggregate distinct messages with only a bit field."),
+            RepeatedSigners => write!(f, "Cannot aggregate due to duplicate signers."),
+        }
+    }
+}
+
+impl ::std::error::Error for BitPoPError {
+    fn description(&self) -> &str {
+        use self::BitPoPError::*;
+        match self {
+            BadPoP(s) => s,
+            MismatchedMessage => "Cannot aggregate distinct messages with only a bit field.",
+            RepeatedSigners => "Cannot aggregate due to duplicate signers",
+        }
+    }
+    fn cause(&self) -> Option<&::std::error::Error> { None }
 }
 
 /// One individual message with attached aggreggate BLS signatures
@@ -318,50 +355,6 @@ pub struct BitPoPSignedMessage<E: EngineBLS, POP: ProofsOfPossession<E>> {
     signers: <POP as ProofsOfPossession<E>>::Signers,
     message: Message,
     signature: Signature<E>,
-}
-
-impl<E,POP> BitPoPSignedMessage<E,POP> 
-where
-    E: EngineBLS,
-    POP: ProofsOfPossession<E>,
-{
-    pub fn new(proofs_of_possession: POP, message: Message) -> BitPoPSignedMessage<E,POP> {
-        let signers = proofs_of_possession.new_signers();
-        let signature = Signature(E::SignatureGroup::zero());
-        BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
-    }
-
-    pub fn add(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
-        let i = self.proofs_of_possession.find(&publickey)
-            .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
-        let b = 1 << (i % 8);
-        let s = &mut self.signers.borrow_mut()[i / 8];
-        if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
-        *s |= b;
-        self.signature.0.add_assign(&signature.0);
-        Ok(())
-    }
-
-    fn chunk_lookup(&self, index: usize) -> u8 {
-        (0..8).into_iter().fold(0u8, |b,j| {
-            b | self.proofs_of_possession.lookup(8*index + j).map_or(1u8 << j, |_| 0u8)
-        })
-    }
-
-    pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
-        if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
-            return Err(BitPoPError::BadPoP("Mismatched proof-of-possession"));
-        }
-        for (i,(x,y)) in self.signers.borrow().iter().zip(other.signers.borrow()).enumerate() {
-            if *x & *y != 0 { return Err(BitPoPError::RepeatedSigners); }
-            if *y & self.chunk_lookup(i) != 0 { return Err(BitPoPError::BadPoP("Absent signer")); }
-        }
-        for (x,y) in self.signers.borrow_mut().iter_mut().zip(other.signers.borrow()) {
-            *x |= y;
-        }
-        self.signature.0.add_assign(&other.signature.0);
-        Ok(())
-    }
 }
 
 impl<'a,E,POP> Signed for &'a BitPoPSignedMessage<E,POP> 
@@ -398,6 +391,66 @@ where
         verify_with_distinct_messages(self,true)
     }
 }
+
+impl<E,POP> BitPoPSignedMessage<E,POP> 
+where
+    E: EngineBLS,
+    POP: ProofsOfPossession<E>,
+{
+    pub fn new(proofs_of_possession: POP, message: Message) -> BitPoPSignedMessage<E,POP> {
+        let signers = proofs_of_possession.new_signers();
+        let signature = Signature(E::SignatureGroup::zero());
+        BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
+    }
+
+    pub fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
+        let i = self.proofs_of_possession.find(&publickey)
+            .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
+        debug_assert!( self.proofs_of_possession.lookup(i) == Some(publickey), "Invalid ProofsOfPossession implementation" );
+        let b = 1 << (i % 8);
+        let s = &mut self.signers.borrow_mut()[i / 8];
+        if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
+        *s |= b;
+        self.signature.0.add_assign(&signature.0);
+        Ok(())
+    }
+
+    pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),BitPoPError>
+    {
+        if self.message != signed.message {
+            return Err(BitPoPError::MismatchedMessage);
+        }
+        self.add_points(signed.publickey,signed.signature)
+    }
+
+    fn chunk_lookup(&self, index: usize) -> u8 {
+        (0..8).into_iter().fold(0u8, |b,j| {
+            let i = 8*index + j;
+            let pk = self.proofs_of_possession.lookup(i)
+                .map(|pk| { debug_assert!( Some(i) == self.proofs_of_possession.find(&pk) ); pk });
+            b | pk.map_or(1u8 << j, |_| 0u8)
+        })
+    }
+
+    pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
+        if self.message != other.message {
+            return Err(BitPoPError::MismatchedMessage);
+        }
+        if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
+            return Err(BitPoPError::BadPoP("Mismatched proof-of-possession"));
+        }
+        for (i,(x,y)) in self.signers.borrow().iter().zip(other.signers.borrow()).enumerate() {
+            if *x & *y != 0 { return Err(BitPoPError::RepeatedSigners); }
+            if *y & self.chunk_lookup(i) != 0 { return Err(BitPoPError::BadPoP("Absent signer")); }
+        }
+        for (x,y) in self.signers.borrow_mut().iter_mut().zip(other.signers.borrow()) {
+            *x |= y;
+        }
+        self.signature.0.add_assign(&other.signature.0);
+        Ok(())
+    }
+}
+
 
 
 #[cfg(test)]
@@ -439,6 +492,87 @@ mod tests {
 
         *(dms.messages_n_publickeys.get_mut(&msgs[1]).unwrap()) = keypairs[0].public.clone();
         assert!( ! dms.verify() , "Verification by an incorrect signer passed");
+    }
+
+    #[test]
+    fn proof_of_possession() {
+        let msg1 = Message::new(b"ctx",b"some message");
+        let msg2 = Message::new(b"ctx",b"another message");
+
+        let k = |_| Keypair::<ZBLS>::generate(thread_rng());
+        let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
+        let pop = keypairs.iter().map(|k| k.public).collect::<Vec<_>>();
+        let dup = keypairs[3].clone();
+        keypairs.push(dup);
+        let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
+
+        let mut bitpop1 = BitPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        for (i,sig) in sigs1.iter().enumerate() {
+            assert!( bitpop1.add(sig).is_ok() == (i<4));
+            assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+        }
+        assert!( verifiers::verify_unoptimized(&bitpop1) );
+        assert!( verifiers::verify_simple(&bitpop1) );
+        assert!( verifiers::verify_with_distinct_messages(&bitpop1,false) );
+        // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
+
+        let sigs2 = keypairs.iter_mut().map(|k| k.sign(msg2)).collect::<Vec<_>>();  
+        let mut bitpop2 = BitPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
+        for sig in sigs2.iter().take(3) {
+            assert!( bitpop2.add(sig).is_ok() );
+        }
+        assert!( bitpop1.merge(&bitpop2).is_err() );
+
+        let mut multimsg = AggregatedAssumingProofsOfPossession::<ZBLS>::new();
+        multimsg.aggregate(&bitpop1);
+        multimsg.aggregate(&bitpop2);
+        assert!( multimsg.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+        assert!( verifiers::verify_unoptimized(&multimsg) );
+        assert!( verifiers::verify_simple(&multimsg) );
+        assert!( verifiers::verify_with_distinct_messages(&multimsg,false) );
+
+        let oops = Keypair::<ZBLS>::generate(thread_rng()).sign(msg2);
+        assert!( bitpop1.add_points(oops.publickey,oops.signature).is_err() );
+        /*
+        TODO: Test that adding signers for an incorrect message fails, but this version angers teh borrow checker.
+        let mut oops_pop = pop.clone();
+        oops_pop.push(oops.publickey);
+        // We should constriuvt a better test here because this only works
+        // because pop.len() is not a multiple of 8.
+        bitpop1.proofs_of_possession = &oops_pop[..];
+        bitpop1.add_points(oops.publickey,oops.signature).unwrap();
+        assert!( ! bitpop1.verify() );
+        assert!( ! verifiers::verify_unoptimized(&bitpop1) );
+        assert!( ! verifiers::verify_simple(&bitpop1) );
+        assert!( ! verifiers::verify_with_distinct_messages(&bitpop1,false) );
+        */
+        
+        /*
+
+
+        let dm_new = || DistinctMessages::<ZBLS>::new();
+        fn dm_add(dm: DistinctMessages<ZBLS>, sig: &super::single::SignedMessage<ZBLS>)
+         -> Result<DistinctMessages<ZBLS>,AggregationAttackViaDuplicateMessages>
+            { dm.add(sig) }
+
+        let mut dms = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
+        assert!( dms.messages_and_publickeys().len() == 4 );
+        let dms0 = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
+        assert!( dms0.merge(&dms).is_err() );
+        assert!( sigs.iter().try_fold(dm_new(), dm_add).is_err() );
+        assert!( dms.verify() ); // verifiers::verify_with_distinct_messages(&dms,true)
+        assert!( verifiers::verify_unoptimized(&dms) );
+        assert!( verifiers::verify_simple(&dms) );
+        assert!( verifiers::verify_with_distinct_messages(&dms,false) );
+        // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
+
+        let dms1 = sigs.iter().skip(1).take(2).try_fold(dm_new(), dm_add).unwrap();
+        let dms2 = sigs.iter().skip(3).try_fold(dm_new(), dm_add).unwrap();
+        assert!( dms1.merge(&dms2).unwrap().signature == dms.signature );
+
+        *(dms.messages_n_publickeys.get_mut(&msgs[1]).unwrap()) = keypairs[0].public.clone();
+        assert!( ! dms.verify() , "Verification by an incorrect signer passed");
+        */
     }
 }
 
