@@ -386,8 +386,6 @@ where
 }
 
 
-
-
 #[cfg(test)]
 mod tests {
     use rand::{thread_rng};  // Rng
@@ -397,7 +395,7 @@ mod tests {
     #[test]
     fn distinct_messages() {
         let msgs = [ Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message2"), Message::new(b"ctx",b"Message3"), Message::new(b"ctx",b"Message4") ];
-        let bad_msg = Message::new(b"ctx",b"Oops");
+        // let bad_msg = Message::new(b"ctx",b"Oops");
 
         let k = |_| Keypair::<ZBLS>::generate(thread_rng());
         let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
@@ -405,7 +403,7 @@ mod tests {
         keypairs.push(dup);
 
         let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();  
-        let bad_sig  = keypairs[4].sign(bad_msg);
+        // let bad_sig  = keypairs[4].sign(bad_msg);
 
         let dm_new = || DistinctMessages::<ZBLS>::new();
         fn dm_add(dm: DistinctMessages<ZBLS>, sig: &super::single::SignedMessage<ZBLS>)
@@ -417,7 +415,11 @@ mod tests {
         let dms0 = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
         assert!( dms0.merge(&dms).is_err() );
         assert!( sigs.iter().try_fold(dm_new(), dm_add).is_err() );
-        assert!( dms.verify() );
+        assert!( dms.verify() ); // verifiers::verify_with_distinct_messages(&dms,true)
+        assert!( verifiers::verify_unoptimized(&dms) );
+        assert!( verifiers::verify_simple(&dms) );
+        assert!( verifiers::verify_with_distinct_messages(&dms,false) );
+        // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
 
         let dms1 = sigs.iter().skip(1).take(2).try_fold(dm_new(), dm_add).unwrap();
         let dms2 = sigs.iter().skip(3).try_fold(dm_new(), dm_add).unwrap();
