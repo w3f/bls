@@ -102,7 +102,7 @@ impl<E: EngineBLS> DistinctMessages<E> {
     ///
     /// We require that duplicate message halt verification by consuming
     /// self by vaule and return it only if no duplicate occur.
-    pub fn merge<S>(mut self, signed: &DistinctMessages<E>)
+    pub fn merge(mut self, signed: &DistinctMessages<E>)
       -> Result<Self,AggregationAttackViaDuplicateMessages>
     {
         // We need not detect duplicates early for recovery because
@@ -390,12 +390,58 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rand::{thread_rng};  // Rng
+
     use super::*;
 
-    // use rand::{SeedableRng, XorShiftRng};
+    #[test]
+    fn distinct_messages() {
+        let msgs = [ Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message2"), Message::new(b"ctx",b"Message3"), Message::new(b"ctx",b"Message4") ];
+        let bad_msg = Message::new(b"ctx",b"Oops");
 
-    // #[test]
-    // fn foo() { }
+        let k = |_| Keypair::<ZBLS>::generate(thread_rng());
+        let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
+        let dup = keypairs[3].clone();
+        keypairs.push(dup);
+
+        let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();  
+        let bad_sig  = keypairs[4].sign(bad_msg);
+
+        let dm_new = || DistinctMessages::<ZBLS>::new();
+        fn dm_add(dm: DistinctMessages<ZBLS>, sig: &super::single::SignedMessage<ZBLS>)
+         -> Result<DistinctMessages<ZBLS>,AggregationAttackViaDuplicateMessages>
+            { dm.add(sig) }
+
+        let dms = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
+        assert!( dms.messages_and_publickeys().len() == 4 );
+        let dms0 = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
+        assert!( dms0.merge(&dms).is_err() );
+        assert!( sigs.iter().try_fold(dm_new(), dm_add).is_err() );
+        assert!( dms.verify() );
+
+        let dms1 = sigs.iter().skip(1).take(2).try_fold(dm_new(), dm_add).unwrap();
+        let dms2 = sigs.iter().skip(3).try_fold(dm_new(), dm_add).unwrap();
+        assert!( dms1.merge(&dms2).unwrap().signature == dms.signature );
+
+        /*
+        assert!( good_sig == keypair.sign(good) );
+        assert!( good_sig == keypair.into_vartime().sign(good) );
+        let bad_sig  = keypair.sign(bad);
+        assert!( bad_sig == keypair.into_vartime().sign(bad) );
+
+        assert!(good_sig.verify_slow());
+    
+        assert!(keypair.public.verify(good, &good_sig.signature),
+                "Verification of a valid signature failed!");
+
+        assert!(!keypair.public.verify(good, &bad_sig.signature),
+                "Verification of a signature on a different message passed!");
+        assert!(!keypair.public.verify(bad, &good_sig.signature),
+                "Verification of a signature on a different message passed!");
+        assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
+                "Verification of a signature on a different message passed!");
+        */
+    }
 }
 
 

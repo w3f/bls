@@ -307,7 +307,7 @@ pub trait Signed: Sized {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
 
     // use rand::{SeedableRng, XorShiftRng};
 

@@ -40,8 +40,13 @@ use super::*;
 
 /// Secret signing key lacking the side channel protections from
 /// key splitting.  Avoid using directly in production.
-#[derive(Clone)]
 pub struct SecretKeyVT<E: EngineBLS>(pub E::Scalar);
+
+impl<E: EngineBLS> Clone for SecretKeyVT<E> {
+    fn clone(&self) -> Self { SecretKeyVT(self.0) }
+}
+
+// TODO: Serialization
 
 impl<E: EngineBLS> SecretKeyVT<E> {
     /// Generate a secret key without side channel protections.
@@ -95,8 +100,12 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 ///
 /// TODO: Is Pippenger’s algorithm, or another fast MSM algorithm,
 /// secure when used with key splitting?
-#[derive(Clone)]
 pub struct SecretKey<E: EngineBLS>(E::Scalar,E::Scalar);
+
+impl<E: EngineBLS> Clone for SecretKey<E> {
+    fn clone(&self) -> Self { SecretKey(self.0,self.1) }
+}
+
 // TODO: Serialization
 
 impl<E: EngineBLS> SecretKey<E> {
@@ -263,6 +272,14 @@ pub struct KeypairVT<E: EngineBLS> {
     pub secret: SecretKeyVT<E>,
     pub public: PublicKey<E>,
 }
+
+impl<E: EngineBLS> Clone for KeypairVT<E> {
+    fn clone(&self) -> Self { KeypairVT {
+        secret: self.secret.clone(),
+        public: self.public.clone(),
+    } }
+}
+
 // TODO: Serialization
 
 impl<E: EngineBLS> KeypairVT<E> {
@@ -296,6 +313,14 @@ pub struct Keypair<E: EngineBLS> {
     pub secret: SecretKey<E>,
     pub public: PublicKey<E>,
 }
+
+impl<E: EngineBLS> Clone for Keypair<E> {
+    fn clone(&self) -> Self { Keypair {
+        secret: self.secret.clone(),
+        public: self.public.clone(),
+    } }
+}
+
 // TODO: Serialization
 
 impl<E: EngineBLS> Keypair<E> {
@@ -375,8 +400,9 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 }
 
 impl<E: EngineBLS> SignedMessage<E> {
+    #[cfg(test)]
     fn verify_slow(&self) -> bool {
-        let mut g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::one();
+        let g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::one();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }
@@ -446,11 +472,8 @@ impl<E: EngineBLS> SignedMessage<E> {
 mod tests {
     use super::*;
 
-    use pairing::bls12_381::Bls12;
-    use rand::{SeedableRng, XorShiftRng};
-
     #[test]
-    fn sign_verify_bytes() {
+    fn single_messages() {
         let good = Message::new(b"ctx",b"test message");
         let bad = Message::new(b"ctx",b"wrong message");
 
