@@ -90,7 +90,8 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
         }
     }
 
-    /// Aggregage BLS signatures with proofs-of-possession
+
+    /// Aggregage BLS signatures assuming they have proofs-of-possession
     pub fn aggregate<'a,S>(&mut self, signed: &'a S) 
     where
         &'a S: Signed<E=E>,

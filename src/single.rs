@@ -69,7 +69,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
         SecretKey(self.0.clone(),E::Scalar::zero())
     }
 
-    /// 
+    /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
         PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::one().mul(self.0) )

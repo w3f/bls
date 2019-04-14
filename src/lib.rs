@@ -111,7 +111,7 @@ pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
 /// Internal message hash size.  
 ///
 /// We choose 192 bits here although 128 bits (16 bytes) suffices.
-const MESSAGE_SIZE: usize = 24;
+const MESSAGE_SIZE: usize = 32;
 
 /// Internal message hash type.  Short for frequent rehashing
 /// by `HashMap`, etc.
@@ -178,7 +178,7 @@ pub trait EngineBLS {
         CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
         + Into<<Self::SignatureGroup as CurveProjective>::Affine>;
 
-    /// Generate a random scalar 
+    /// Generate a random scalar for use as a secret key.
     fn generate<R: Rng>(rng: &mut R) -> Self::Scalar {
         Self::Scalar::rand(rng)
     }
@@ -264,7 +264,8 @@ pub const Z_BLS : ZBLS = UsualBLS(::pairing::bls12_381::Bls12);
 ///
 /// We favor this variant because verifiers always perform
 /// `O(signers)` additions on the `PublicKeyGroup`, or worse 128 bit
-/// scalar multiplications with delinearization.  We nevertheless
+/// scalar multiplications with delinearization. 
+/// We also orient this variant to match zcash's traits.
 #[derive(Default)]
 pub struct UsualBLS<E: Engine>(pub E);
 
@@ -299,13 +300,13 @@ impl<E: Engine> EngineBLS for UsualBLS<E> {
 }
 
 
-/// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys.
+/// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
 ///
-/// We recommend gainst this variant because verifiers always perform
-/// `O(signers)` additions on the `PublicKeyGroup`, or worse 128 bit
-/// scalar multiplications with delinearization.  We nevertheless
-/// provide this variant because some use cases may perform better
-/// this way, or even require both curves in both roles. 
+/// We recommend gainst this variant by default because verifiers
+/// always perform `O(signers)` additions on the `PublicKeyGroup`,
+/// or worse 128 bit scalar multiplications with delinearization. 
+/// Yet, there are specific use cases where this variant performs
+/// better.  We swapy two group roles relative to zcash here.
 #[derive(Default)]
 pub struct TinyBLS<E: Engine>(pub E);
 
@@ -347,10 +348,9 @@ impl<E: Engine> EngineBLS for TinyBLS<E> {
 /// due to the absence of assocaited type constructers (ATCs).
 /// We shall make `messages_and_publickeys` take `&sefl` and
 /// remove these limitations in the future once ATCs stabalize,
-/// thus removing `PKG`. 
-/// https://github.com/rust-lang/rfcs/blob/master/text/1598-generic_associated_types.md
+/// thus removing `PKG`.  See [Rust RFC 1598](https://github.com/rust-lang/rfcs/blob/master/text/1598-generic_associated_types.md)
 /// We shall eventually remove MnPK entirely whenever `-> impl Trait`
-/// in traits gets stabalized https://github.com/rust-lang/rust/issues/34511
+/// in traits gets stabalized.  See [Rust RFCs 1522, 1951, and 2071](https://github.com/rust-lang/rust/issues/34511
 pub trait Signed: Sized {
     type E: EngineBLS;
 
