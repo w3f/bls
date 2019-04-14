@@ -1,7 +1,36 @@
-//! Linear aggregation for BLS signatures
+//! Aggregation of BLS signatures using proofs-of-possession 
 //!
-//! We handle linear flavors of a aggregate BLS signatures here,
-//! including both distinct messages and proof-of-possesion.
+//! In this module, we provide the linear flavor of aggregate 
+//! BLS signature in which the verifiers has previously checked
+//! proofs-of-possession for all public keys.  In other words,
+//! we simply add up the signatures because the previously checked
+//! proofs-of-possession for all signers prevent rogue key attacks.
+//! See the security arguments in The Power of Proofs-of-Possession:
+//! Securing Multiparty Signatures against Rogue-Key Attacks
+//! by Thomas Ristenpart and Scott Yilek at https://eprint.iacr.org/2007/264.pdf
+//!
+//! These proof-of-possession are simply self-signed certificates,
+//! so a BLS signature by each secret key on its own public key.
+//! (TODO: cite Ari too???)
+//! Importantly, the message for this self-signed certificates
+//! must uniquely distinguish the public key for which the signature
+//! establishes a proof-of-possession. 
+//! It follows that each proof-of-possession has a unique message,
+//! so distinct message aggregation is optimal for verifying them.
+//!
+//! In this vein, we note that aggregation under proofs-of-possession
+//! cannot improve performance when signers sign distinct messages,
+//! so proofs-of-possession help with aggregating votes in a concensus
+//! protocol, but should never be used for accounts on a block chain.
+//!
+//! We assume here that users provide their own data structure for
+//! proofs-of-poossession.  We provide more structure for users who
+//! one bit per vote in a concensus protocol:  
+//! You first verify the proofs-of-possession when building a data
+//! structure that holds the voters' keys.  You implement the
+//! `ProofsOfPossession` trait for this data strtcuture as well,
+//! so that the `BitPoPSignedMessage` type provides a signature
+//! data type with reasonable sanity checks.
 
 use std::borrow::{Borrow,BorrowMut};
 use std::collections::HashMap;
@@ -11,183 +40,51 @@ use super::*;
 use super::single::SignedMessage;
 use super::verifiers::verify_with_distinct_messages;
 
-
-// Distinct Messages //
-
-/// Error tyoe for non-distinct messages found during distinct
-/// message aggregation.
-///
-/// There are numerous scenarios that make recovery from such errors
-/// impossible.  We therefore destroy the aggregate signature struct
-/// whenever creating this, so that users cannot respond incorrectly
-/// to an error message.
-#[derive(Debug)]
-pub struct AggregationAttackViaDuplicateMessages;
-
-impl ::std::fmt::Display for AggregationAttackViaDuplicateMessages {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        write!(f, "Attempted to aggregate duplicate messages.")
-    }
-}
-
-impl ::std::error::Error for AggregationAttackViaDuplicateMessages {
-    fn description(&self) -> &str {
-        "Attempted to aggregate duplicate messages." 
-    }
-    fn cause(&self) -> Option<&::std::error::Error> { None }
-}
-
-/// Distinct messages with attached BLS signature
-/// 
-/// We can aggregate BLS signatures on distinct messages without
-/// additional assuptions or delinearization.  In this variant, there
-/// is obviously no aggregation on the signature curve, so verification
-/// still requires one pairing per message.  We can however aggregate
-/// numerous messages with the same signer, so this works well when
-/// a small signer set signs numerous messages, even if the signer set
-/// remains unknown.
-///
-/// We also of course benifit from running one single Miller loop and
-/// final exponentiation when compiuting all these pairings.  We note
-/// that proofs of possession are necessarily distinct messages because
-/// the message singles out the signing key uniquely, so they may be
-/// aggregated or batch verified with distinct message mode.
-///
-/// As an aside, almost all signature schemes permit support extremely
-/// efficent signer side batching, which normally out performs BLS. 
-/// It's ocasioanlly worth asking if signers can be trusted to such
-/// collected signatures.  See also:
-/// - RSA:  https://eprint.iacr.org/2018/082.pdf
-/// - Boneh-Boyen:  https://crypto.stanford.edu/~dabo/papers/bbsigs.pdf
-///     http://sci-gems.math.bas.bg:8080/jspui/bitstream/10525/1569/1/sjc096-vol3-num3-2009.pdf
-#[derive(Clone)]
-pub struct DistinctMessages<E: EngineBLS> {
-    messages_n_publickeys: HashMap<Message,PublicKey<E>>,
-    signature: Signature<E>,
-}
-// TODO: Serialization
-
-impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
-    type E = E;
-
-    type M = &'a Message;
-    type PKG = &'a PublicKey<Self::E>;
-    type PKnM = ::std::collections::hash_map::Iter<'a,Message,PublicKey<E>>;
-
-    fn messages_and_publickeys(self) -> Self::PKnM {
-        self.messages_n_publickeys.iter()
-    }
-
-    fn signature(&self) -> Signature<E> { self.signature }
-
-    fn verify(self) -> bool {
-        verify_with_distinct_messages(self, false)
-    }
-}
-
-/*
-We do not require an abstract aggregation routine here since only
-two quite different types work in this case.
-pub trait SignedWithDistinctMessages : Signed {}
-impl<E: EngineBLS,M: Message> SignedWithDistinctMessages for SignedMessage<E,M> {}
-impl<E: EngineBLS,M: Message> SignedWithDistinctMessages for DistinctMessages<E,M> {}
-*/
-
-impl<E: EngineBLS> DistinctMessages<E> {
-    pub fn new() -> DistinctMessages<E> {
-        DistinctMessages {
-            messages_n_publickeys: HashMap::new(),
-            signature: Signature(E::SignatureGroup::zero()),
-        }
-    }
-
-    /// Aggregage BLS signatures from singletons with distinct messages
-    ///
-    /// We require that duplicate message halt verification by consuming
-    /// self by vaule and return it only if no duplicate occur.
-    pub fn add(mut self, signed: &SignedMessage<E>) -> DistinctMessagesResult<E>
-    {
-        if let Some(_old_publickey) = self.messages_n_publickeys.insert(signed.message,signed.publickey) {
-            // We need not recover from this error because the hash map gets erased.
-            // self.messages_n_publickeys.insert(signed.message,old_publickey);
-            return Err(AggregationAttackViaDuplicateMessages);
-        }
-        self.signature.0.add_assign(&signed.signature.0);
-        Ok(self)
-    }
-
-    /// Aggregage BLS signatures from sources with distinct messages
-    ///
-    /// We require that duplicate message halt verification by consuming
-    /// self by vaule and return it only if no duplicate occur.
-    pub fn merge(mut self, signed: &DistinctMessages<E>) -> DistinctMessagesResult<E>
-    {
-        // We need not detect duplicates early for recovery because
-        // duplicates cause our hashmap to be freed anyways.
-        // for (m,_pk) in signed.messages_n_publickeys.iter() {
-        //     if self.messages_n_publickeys.contains_key(m) {
-        //      return Err(AggregationAttackViaDuplicateMessages);
-        //     }
-        // }
-        for (m,pk) in signed.messages_n_publickeys.iter() {
-            // assert!(self.messages_n_publickeys.insert(*m,*pk).is_none());
-            if self.messages_n_publickeys.insert(*m,*pk).is_some() {
-                return Err(AggregationAttackViaDuplicateMessages);
-            }
-        }
-        self.signature.0.add_assign(&signed.signature.0);
-        Ok(self)
-    }
-}
-
-pub type DistinctMessagesResult<E> = Result<DistinctMessages<E>,AggregationAttackViaDuplicateMessages>;
-
-/*
-TODO: Adopt .collect::<DistinctMessagesResult<E>>() via FromIterator
-      whenever https://github.com/rust-lang/rfcs/issues/1856 gets resolved.
-impl<'a,E: EngineBLS> FromIterator<&'a SignedMessage<E>> for DistinctMessagesResult<E> {
-    fn from_iter<II>(ii: II) -> Self
-    where II: IntoIterator<Item = &'a SignedMessage<E>>,
-    {
-        ii.into_iter().try_fold(DistinctMessages::<ZBLS>::new(), |dm,sm| dm.add(sm))
-    }
-}
-*/
-
-
-// Proof-of-Possession //
-
-/// Messages with attached aggreggate BLS signatures from signers
+/// Batch BLS signatures with attached messages and signers,
 /// for whom we previously checked proofs-of-possession.
 ///
-/// We say a signer has provided a proof-of-possession if the
-/// verifier knows they have signed some other message.  In practice,
-/// this requires verifying a signature on a message containing the
-/// signer's public key, without using proof-of-possession in that
-/// verification.
+/// In this type, we provide a high-risk low-level batching and 
+/// aggregation mechanism that merely adds up signatures under the
+/// assumption that all required proofs-of-possession were previously
+/// checked.
 ///
-/// We may aggregate signatures trivially with simple addition when
-/// all signers have previously supplied a proof-of-possession.
-/// See the security arguments in The Power of Proofs-of-Possession:
-/// Securing Multiparty Signatures against Rogue-Key Attacks
-/// by Thomas Ristenpart and Scott Yilek at https://eprint.iacr.org/2007/264.pdf
+/// We say a signing key has provided a proof-of-possession if the
+/// verifier remembers having checked some self-signed certificate
+/// by that key.  It's insecure to use this aggregation strategy
+/// without first cehcking proofs-of-possession.  In particular
+/// it is insecure to use this aggregation strategy when checking
+/// proofs-of-possession, and could not improve performance anyways.  
+/// Distinct message aggregation is always optimal for checking
+/// proofs-of-possession.  Please see the module level doumentation
+/// for additional discussion and notes on security.
 ///
-/// In principle, we could combine proof-of-possession with distinct
-/// message assumptions, or other aggregation strategies, when
-/// verifiers have only observed a subset of the proofs-of-possession,
-/// but this sounds complex or worse fragile.
+/// We foresee this type primarily being used to batch several
+/// `BitPoPSignedMessage`s into one verification.  We do not provide
+/// aggreggation in the usual sense here, instead merging multiples
+/// signers public keys anytime they sign the same message, so the.
+/// this type essentially provides only fast batch verificartion. 
 ///
-/// TODO: Implement gaussian elimination verification scheme.
+/// We therefore do not bother providing serialization for this
+/// type.  Actual aggregation should be done with types like 
+/// `BitPoPSignedMessage` that utilize a `ProofsOfPossession` to
+/// efficently serialize subsets of the set of signers. 
+//
+// In principle, one might combine proof-of-possession with distinct
+// message assumptions, or other aggregation strategies, when
+// verifiers have only observed a subset of the proofs-of-possession,
+// but this sounds complex or worse fragile.
+//
+// TODO: Implement gaussian elimination verification scheme.
 #[derive(Clone)]
-pub struct AggregatedAssumingProofsOfPossession<E: EngineBLS> {
+pub struct BatchAssumingProofsOfPossession<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
     signature: Signature<E>,
 }
 // TODO: Serialization
 
-impl<E: EngineBLS> AggregatedAssumingProofsOfPossession<E> {
-    pub fn new() -> AggregatedAssumingProofsOfPossession<E> {
-        AggregatedAssumingProofsOfPossession {
+impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
+    pub fn new() -> BatchAssumingProofsOfPossession<E> {
+        BatchAssumingProofsOfPossession {
             messages_n_publickeys: HashMap::new(),
             signature: Signature(E::SignatureGroup::zero()),
         }
@@ -210,7 +107,7 @@ impl<E: EngineBLS> AggregatedAssumingProofsOfPossession<E> {
 }
 
 
-impl<'a,E: EngineBLS> Signed for &'a AggregatedAssumingProofsOfPossession<E> {
+impl<'a,E: EngineBLS> Signed for &'a BatchAssumingProofsOfPossession<E> {
     type E = E;
 
     type M = &'a Message;
@@ -226,9 +123,9 @@ impl<'a,E: EngineBLS> Signed for &'a AggregatedAssumingProofsOfPossession<E> {
     fn verify(self) -> bool {
         // We have already aggregated distinct messages, so our distinct
         // message verification code provides reasonable optimizations,
-        // except the public keys need not be normalized here. 
-        // We foresee verification via gaussian elimination being
-        // significantly faster, but requiring affine keys.
+        // except the public keys might not be normalized here. 
+        // We foresee verification via gaussian elimination being faster,
+        // but requires affine keys or normalization.
         verify_with_distinct_messages(self,true)
         // TODO: verify_with_gaussian_elimination(self)
     }
@@ -245,7 +142,7 @@ fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
     x == y
 }
 
-/// Proof-of-possession table
+/// Proof-of-possession table.
 ///
 /// We provide a signers bitfield for efficent 
 pub trait ProofsOfPossession<E: EngineBLS> {
@@ -315,7 +212,7 @@ pub enum BitPoPError {
     /// Attempted to use missmatched proof-of-possession tables. 
     BadPoP(&'static str),
     /// Attempted to aggregate distint messages, which requires the 
-    /// the more general AggregatedAssumingProofsOfPossession type instead.
+    /// the more general BatchAssumingProofsOfPossession type instead.
     MismatchedMessage,
     /// Aggregation is impossible due to signers being repeated in both sets.
     RepeatedSigners,
@@ -348,7 +245,8 @@ impl ::std::error::Error for BitPoPError {
 /// from signers for whom we previously checked proofs-of-possession,
 /// and with the singers presented as a compact bitfield.
 ///
-///
+/// You must provide a `ProofsOfPossession` for this, likely by
+/// implementing it for your own data structures.
 #[derive(Clone)]
 pub struct BitPoPSignedMessage<E: EngineBLS, POP: ProofsOfPossession<E>> {
     proofs_of_possession: POP,
@@ -460,41 +358,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn distinct_messages() {
-        let msgs = [ Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message1"), Message::new(b"ctx",b"Message2"), Message::new(b"ctx",b"Message3"), Message::new(b"ctx",b"Message4") ];
-
-        let k = |_| Keypair::<ZBLS>::generate(thread_rng());
-        let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
-        let dup = keypairs[3].clone();
-        keypairs.push(dup);
-
-        let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();  
-
-        let dm_new = || DistinctMessages::<ZBLS>::new();
-        fn dm_add(dm: DistinctMessages<ZBLS>, sig: &SignedMessage<ZBLS>)
-         -> Result<DistinctMessages<ZBLS>,AggregationAttackViaDuplicateMessages>
-            { dm.add(sig) }
-
-        let mut dms = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
-        assert!( dms.messages_and_publickeys().len() == 4 );
-        let dms0 = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
-        assert!( dms0.merge(&dms).is_err() );
-        assert!( sigs.iter().try_fold(dm_new(), dm_add).is_err() );
-        assert!( dms.verify() ); // verifiers::verify_with_distinct_messages(&dms,true)
-        assert!( verifiers::verify_unoptimized(&dms) );
-        assert!( verifiers::verify_simple(&dms) );
-        assert!( verifiers::verify_with_distinct_messages(&dms,false) );
-        // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
-
-        let dms1 = sigs.iter().skip(1).take(2).try_fold(dm_new(), dm_add).unwrap();
-        let dms2 = sigs.iter().skip(3).try_fold(dm_new(), dm_add).unwrap();
-        assert!( dms1.merge(&dms2).unwrap().signature == dms.signature );
-
-        *(dms.messages_n_publickeys.get_mut(&msgs[1]).unwrap()) = keypairs[0].public.clone();
-        assert!( ! dms.verify() , "Verification by an incorrect signer passed");
-    }
-
-    #[test]
     fn proof_of_possession() {
         let msg1 = Message::new(b"ctx",b"some message");
         let msg2 = Message::new(b"ctx",b"another message");
@@ -523,7 +386,7 @@ mod tests {
         }
         assert!( bitpop1.merge(&bitpop2).is_err() );
 
-        let mut multimsg = AggregatedAssumingProofsOfPossession::<ZBLS>::new();
+        let mut multimsg = BatchAssumingProofsOfPossession::<ZBLS>::new();
         multimsg.aggregate(&bitpop1);
         multimsg.aggregate(&bitpop2);
         assert!( multimsg.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
@@ -546,34 +409,5 @@ mod tests {
         assert!( ! verifiers::verify_simple(&bitpop1) );
         assert!( ! verifiers::verify_with_distinct_messages(&bitpop1,false) );
         */
-        
-        /*
-
-
-        let dm_new = || DistinctMessages::<ZBLS>::new();
-        fn dm_add(dm: DistinctMessages<ZBLS>, sig: &super::single::SignedMessage<ZBLS>)
-         -> Result<DistinctMessages<ZBLS>,AggregationAttackViaDuplicateMessages>
-            { dm.add(sig) }
-
-        let mut dms = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
-        assert!( dms.messages_and_publickeys().len() == 4 );
-        let dms0 = sigs.iter().skip(1).try_fold(dm_new(), dm_add).unwrap();
-        assert!( dms0.merge(&dms).is_err() );
-        assert!( sigs.iter().try_fold(dm_new(), dm_add).is_err() );
-        assert!( dms.verify() ); // verifiers::verify_with_distinct_messages(&dms,true)
-        assert!( verifiers::verify_unoptimized(&dms) );
-        assert!( verifiers::verify_simple(&dms) );
-        assert!( verifiers::verify_with_distinct_messages(&dms,false) );
-        // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
-
-        let dms1 = sigs.iter().skip(1).take(2).try_fold(dm_new(), dm_add).unwrap();
-        let dms2 = sigs.iter().skip(3).try_fold(dm_new(), dm_add).unwrap();
-        assert!( dms1.merge(&dms2).unwrap().signature == dms.signature );
-
-        *(dms.messages_n_publickeys.get_mut(&msgs[1]).unwrap()) = keypairs[0].public.clone();
-        assert!( ! dms.verify() , "Verification by an incorrect signer passed");
-        */
     }
 }
-
-

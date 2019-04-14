@@ -1,4 +1,39 @@
-//! Aggregated BLS signature library
+//! Aggregate BLS signature library with extensive tuning options. 
+//!
+//! If we have two elliptic curve with a pairing `e`, then
+//! a BLS signature `sigma = s*H(msg)` by a public key `S = s g1`
+//! can be verified with the one equation `e(g1,sigma) = e(S,H(msg))`.
+//! These simple BLS signatures are very slow to verify however
+//! because the pairing map `e` is far slower than many cryptographic
+//! primitives.
+//! 
+//! Our pairing `e` maps from a small curve over `F(q)` and a larger
+//! curve over `F(q^2)` into some multipliccative group if a field,
+//! normally over `F(q^12)`.  In principle, this map `e` into `F(q^12)`
+//! makes pairing based cryptography like BLS less secure than
+//! other elliptic curve based cryptography, which further slows down
+//! BLS signatures by requiring larger `q`.
+//!
+//! An almost universally applicable otimization is to seperate the
+//! "Miller loop" that computes in `F(q)` and `F(q^2)` from the slow
+//! final exponentiation that happens in `F(q^12)`.  So our actual
+//! verification equation more resembles `e(-g1,sigma) e(S,H(msg)) = 1`.
+//!
+//! We consder BLS signatures interesting because they support
+//! dramaticly optimizations when handling multiple signatures together.
+//! In fact, BLS signatures support aggregation by a third party
+//! that makes signatures smaller, not merely batch verification.  
+//!
+//! All this stems from the bilinearity of `e`, meaning
+//! `e(x,z)e(y,z) = e(x+y,z)`, `e(x,y)e(x,z) = e(x,y+z)`, etc.
+//! In essence, these fall into linear optimzations, in which only
+//! addition is used, and delinearized optimiztions, in which we
+//! multiply curve points by values unforseeable to the signers.
+//! 
+//! As a rule, we also attempt to batch normalize different arithmatic
+//! outputs, but concievably small signer set sizes might make this
+//! a pessimization.
+
 
 // #![feature(generic_associated_types)]
 #![feature(associated_type_defaults)]
@@ -18,7 +53,8 @@ use pairing::{CurveAffine, CurveProjective, Engine};
 use rand::{Rand, Rng};
 
 pub mod single;
-pub mod linear;
+pub mod distinct;
+pub mod pop;
 pub mod verifiers;
 // pub mod delinear;
 
