@@ -23,7 +23,7 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ff::{Field}; // PrimeField, ScalarEngine, SqrtField
+use ff::{Field, PrimeField, PrimeFieldRepr, PrimeFieldDecodingError}; // ScalarEngine, SqrtField
 use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
 use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
@@ -31,6 +31,7 @@ use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 
 // use std::borrow::{Borrow,BorrowMut};
 use std::iter::once;
+use std::io;
 
 use super::*;
 
@@ -48,6 +49,30 @@ impl<E: EngineBLS> Clone for SecretKeyVT<E> {
 // TODO: Serialization
 
 impl<E: EngineBLS> SecretKeyVT<E> {
+    /// Convert our secret key to its representation type, which
+    /// satisfies both `AsRef<[u64]>` and `ff::PrimeFieldRepr`.
+    /// We suggest `ff::PrimeFieldRepr::write_le` for serialization,
+    /// invoked by our `write` method.
+    pub fn to_repr(&self) -> <E::Scalar as PrimeField>::Repr {
+        self.0.into_repr()
+    }
+    pub fn write<W: io::Write>(&self, writer: W) -> io::Result<()> {
+        self.to_repr().write_le(writer)
+    }
+
+    /// Convert our secret key from its representation type, which
+    /// satisfies `Default`, `AsMut<[u64]>`, and `ff::PrimeFieldRepr`.
+    /// We suggest `ff::PrimeFieldRepr::read_le` for deserialization,
+    /// invoked via our `read` method, which requires a seperate call.
+    pub fn from_repr(repr: <E::Scalar as PrimeField>::Repr) -> Result<Self,PrimeFieldDecodingError> {
+        Ok(SecretKeyVT(<E::Scalar as PrimeField>::from_repr(repr) ?))
+    }
+    pub fn read<R: io::Read>(reader: R) -> io::Result<<E::Scalar as PrimeField>::Repr> {
+        let mut repr = <E::Scalar as PrimeField>::Repr::default();
+        repr.read_le(reader) ?;
+        Ok(repr)
+    }
+    
     /// Generate a secret key without side channel protections.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )
