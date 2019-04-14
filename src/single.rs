@@ -122,6 +122,15 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// then one might avoid holding the write lock while signing, or even
 /// while sampling the random numbers by using other methods.
 ///
+/// Right now, we serialize using `SecretKey::into_vartime` and
+/// `SecretKeyVT::write`, so `secret.into_vartime().write(writer)?`.
+/// We deserialize using the `read`, `from_repr`, and `into_split`
+/// methods of `SecretKeyVT`, so roughly
+/// `SecretKeyVT::from_repr(SecretKeyVT::read(reader) ?) ?.into_split()`.
+///
+/// TODO: Provide sensible `to_bytes` and `from_bytes` methods
+/// for `ZBLS` and `TinyBLS<..>`.
+///
 /// TODO: Is Pippenger’s algorithm, or another fast MSM algorithm,
 /// secure when used with key splitting?
 pub struct SecretKey<E: EngineBLS>(E::Scalar,E::Scalar);
@@ -311,7 +320,7 @@ compression!(Signature,SignatureGroup);
 zbls_serialization!(Signature,UsualBLS,96);
 zbls_serialization!(Signature,TinyBLS,48);
 
-impl<E: EngineBLS> Signature<E> {    
+impl<E: EngineBLS> Signature<E> {
     /// Verify a single BLS signature
     pub fn verify(&self, message: Message, publickey: &PublicKey<E>) -> bool {
         let publickey = publickey.0.into_affine().prepare();
