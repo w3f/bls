@@ -1,4 +1,4 @@
-//! Aggregation for BLS signatures with distinct message.
+//! ## Aggregation for BLS signatures with distinct message.
 //!
 //! In this module, we provide the linear flavor of aggregate BLS
 //! signature in which all messages are required to be distinct.

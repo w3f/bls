@@ -1,7 +1,7 @@
-//! Algorithms for optimized verification of Aggregate BLS signature
+//! ## Algorithms for optimized verification of aggregate and batched BLS signatures.
 //!
 //!
-//!
+//! 
 
 use std::borrow::Borrow;
 use std::collections::HashMap;

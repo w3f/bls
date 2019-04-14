@@ -1,4 +1,4 @@
-//! Aggregation of BLS signatures using proofs-of-possession 
+//! ## Aggregation of BLS signatures using proofs-of-possession 
 //!
 //! In this module, we provide the linear flavor of aggregate 
 //! BLS signature in which the verifiers has previously checked

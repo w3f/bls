@@ -1,4 +1,4 @@
-//! Unaggreagated BLS signatures
+//! ## Unaggreagated BLS signatures
 //!
 //! We simplify the code by using only the projective form as
 //! produced by algebraic operations, like aggregation, signing, and

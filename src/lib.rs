@@ -1,5 +1,14 @@
-//! Aggregate BLS signature library with extensive tuning options. 
-//!
+//! # Aggregate BLS signature library with extensive tuning options. 
+//! 
+//! In short, anyone using BLS signatures should normally choose both
+//! an orientation as well as some aggregation and batching strategies
+//! These two decissions impact performance dramaticaly, but making
+//! the optimal choises requires some attentiom.  This crate employs
+//! convenient abstraction boundaries between curver arithmatic, 
+//! verifier routines, and aggregated and/or batched BLS signatures.
+//! 
+//! ### Pairings
+//! 
 //! If we have two elliptic curve with a pairing `e`, then
 //! a BLS signature `sigma = s*H(msg)` by a public key `S = s g1`
 //! can be verified with the one equation `e(g1,sigma) = e(S,H(msg))`.
@@ -14,25 +23,62 @@
 //! other elliptic curve based cryptography, which further slows down
 //! BLS signatures by requiring larger `q`.
 //!
+//! ### Arithmatic
+//!
 //! An almost universally applicable otimization is to seperate the
 //! "Miller loop" that computes in `F(q)` and `F(q^2)` from the slow
 //! final exponentiation that happens in `F(q^12)`.  So our actual
 //! verification equation more resembles `e(-g1,sigma) e(S,H(msg)) = 1`.
 //!
+//! As one curve is smaller and hence faster, the user should choose 
+//! which orientation of curves they prefer, meaning to which curve
+//! they hash, and which curves hold the signatues and public keys.
+//! In other words, your desired aggregation techniques and usage 
+//! characteristics should determine if youp refer the verification
+//! equation `e(g1,sigma) = e(S,H(msg))` or the fliped form
+//! `e(sigma,g2) = e(H(msg),S)`.  See `UsualBLS` and `TinyBLS`.
+//!
+//! ### Aggregation
+//!
 //! We consder BLS signatures interesting because they support
-//! dramaticly optimizations when handling multiple signatures together.
+//! dramatic optimizations when handling multiple signatures together.
 //! In fact, BLS signatures support aggregation by a third party
 //! that makes signatures smaller, not merely batch verification.  
+//! All this stems from the bilinearity of `e`, meaning we reduce
+//! the number of pairings, or size of the miller loop, by appling
+//! rules like `e(x,z)e(y,z) = e(x+y,z)`, `e(x,y)e(x,z) = e(x,y+z)`,
+//! etc.
 //!
-//! All this stems from the bilinearity of `e`, meaning
-//! `e(x,z)e(y,z) = e(x+y,z)`, `e(x,y)e(x,z) = e(x,y+z)`, etc.
-//! In essence, these fall into linear optimzations, in which only
-//! addition is used, and delinearized optimiztions, in which we
-//! multiply curve points by values unforseeable to the signers.
+//! In essence, our aggregation tricks fall into two categories,
+//! linear aggregation, in which only addition is used, and
+//! delinearized optimiztions, in which we multiply curve points
+//! by values unforseeable to the signers.
+//! In general, linear techniques provide much better performance,
+//! but require stronger invariants be maintained by the caller,
+//! like messages being distinct, or limited signer sets with 
+//! proofs-of-possession.  Also, the delinearized techniques remain
+//! secure without tricky assumptions, but require more computation.
 //! 
+//! ### Verification
+//!
+//! We can often further reduce the pairings required in the
+//! verification equation, beyond the naieve information tracked
+//! by the aggregated signature itself.  Aggregated signature must
+//! state all the individual messages and/or public keys, but
+//! verifiers may collapse anything permitted. 
+//! We thus encounter aggregation-like decissions that impact
+//! verifier performance.
+//!
+//! We therefore provide an abstract interface that permits
+//! doing further aggregation and/or passing any aggregate signature
+//! to any verification routine.
+//!
 //! As a rule, we also attempt to batch normalize different arithmatic
 //! outputs, but concievably small signer set sizes might make this
 //! a pessimization.
+//!
+//! 
+//!
 
 
 // #![feature(generic_associated_types)]
