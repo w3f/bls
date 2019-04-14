@@ -71,13 +71,13 @@ impl ::std::error::Error for AttackViaDuplicateMessages {
 ///
 /// We recommend using this for either batching or aggregation, but
 /// we do yet not provide any serialization scheme for the aggregate
-/// version.  (TODO) 
+/// version.  Instead, you should serialize the aggregated signature
+/// seperately, and reconstruct this type using its `add_*` methods.
 #[derive(Clone)]
 pub struct DistinctMessages<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
     signature: Signature<E>,
 }
-// TODO: Serialization
 
 impl<'a,E: EngineBLS> Signed for &'a DistinctMessages<E> {
     type E = E;
@@ -112,26 +112,47 @@ impl<E: EngineBLS> DistinctMessages<E> {
             signature: Signature(E::SignatureGroup::zero()),
         }
     }
+    
 
-    /// Aggregage BLS signatures from singletons with distinct messages
+    /// Add only a `Signature<E>` to our internal signature.
+    ///
+    /// Useful in constructing an aggregate signature from this type.
+    pub fn add_signature(&mut self, signature: &Signature<E>) {
+        self.signature.0.add_assign(&signature.0);
+    }
+
+    /// Add only a `Message` and `PublicKey<E>` to our internal data.
+    ///
+    /// Useful in constructing an aggregate signature from this type.
     ///
     /// We require that duplicate message halt verification by consuming
-    /// self by vaule and return it only if no duplicate occur.
-    pub fn add(mut self, signed: &SignedMessage<E>) -> DistinctMessagesResult<E>
-    {
-        if let Some(_old_publickey) = self.messages_n_publickeys.insert(signed.message,signed.publickey) {
+    /// self by vaule and return it only if no duplicates occur.
+    pub fn add_message_n_publickey(mut self, message: Message, publickey: PublicKey<E>)
+     -> DistinctMessagesResult<E>
+     {
+        if let Some(_old_publickey) = self.messages_n_publickeys.insert(message,publickey) {
             // We need not recover from this error because the hash map gets erased.
             // self.messages_n_publickeys.insert(signed.message,old_publickey);
             return Err(AttackViaDuplicateMessages);
         }
-        self.signature.0.add_assign(&signed.signature.0);
         Ok(self)
+    }
+
+    /// Aggregage BLS signatures from singletons with distinct messages
+    ///
+    /// We require that duplicate message halt verification by consuming
+    /// self by vaule and return it only if no duplicates occur.
+    pub fn add(self, signed: &SignedMessage<E>) -> DistinctMessagesResult<E>
+    {
+        let mut me = self.add_message_n_publickey(signed.message,signed.publickey) ?;
+        me.add_signature(&signed.signature);
+        Ok(me)
     }
 
     /// Aggregage BLS signatures from sources with distinct messages
     ///
     /// We require that duplicate message halt verification by consuming
-    /// self by vaule and return it only if no duplicate occur.
+    /// self by vaule and return it only if no duplicates occur.
     pub fn merge(mut self, signed: &DistinctMessages<E>) -> DistinctMessagesResult<E>
     {
         // We need not detect duplicates early for recovery because
@@ -147,7 +168,7 @@ impl<E: EngineBLS> DistinctMessages<E> {
                 return Err(AttackViaDuplicateMessages);
             }
         }
-        self.signature.0.add_assign(&signed.signature.0);
+        self.add_signature(&signed.signature);
         Ok(self)
     }
 }

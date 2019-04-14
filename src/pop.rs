@@ -40,8 +40,8 @@ use super::*;
 use super::single::SignedMessage;
 use super::verifiers::verify_with_distinct_messages;
 
-/// Batch BLS signatures with attached messages and signers,
-/// for whom we previously checked proofs-of-possession.
+/// Batch or aggregate BLS signatures with attached messages and
+/// signers, for whom we previously checked proofs-of-possession.
 ///
 /// In this type, we provide a high-risk low-level batching and 
 /// aggregation mechanism that merely adds up signatures under the
@@ -59,15 +59,16 @@ use super::verifiers::verify_with_distinct_messages;
 /// for additional discussion and notes on security.
 ///
 /// We foresee this type primarily being used to batch several
-/// `BitPoPSignedMessage`s into one verification.  We do not provide
-/// aggreggation in the usual sense here, instead merging multiples
-/// signers public keys anytime they sign the same message, so the.
-/// this type essentially provides only fast batch verificartion. 
-///
-/// We therefore do not bother providing serialization for this
-/// type.  Actual aggregation should be done with types like 
-/// `BitPoPSignedMessage` that utilize a `ProofsOfPossession` to
-/// efficently serialize subsets of the set of signers. 
+/// `BitPoPSignedMessage`s into one verification.  We do not track
+/// aggreggated public keys here, instead merging multiples signers
+/// public keys anytime they sign the same message, so this type
+/// essentially provides only fast batch verificartion.  
+/// In principle, our `add_*` methods suffice for building an actual
+/// aggregate signature type.  Yet, normally direct approaches like
+/// `BitPoPSignedMessage` work better for aggregation because
+/// the `ProofsOfPossession` trait tooling permits both enforce the
+/// proofs-of-possession and provide a compact serialization.
+/// We see no reason to support serialization for this type as present.
 //
 // In principle, one might combine proof-of-possession with distinct
 // message assumptions, or other aggregation strategies, when
@@ -80,7 +81,6 @@ pub struct BatchAssumingProofsOfPossession<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
     signature: Signature<E>,
 }
-// TODO: Serialization
 
 impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
     pub fn new() -> BatchAssumingProofsOfPossession<E> {
@@ -90,6 +90,23 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
         }
     }
 
+    /// Add only a `Signature<E>` to our internal signature.
+    ///
+    /// Useful for constructing an aggregate signature, but we
+    /// recommend instead using a custom types like `BitPoPSignedMessage`.
+    pub fn add_signature(&mut self, signature: &Signature<E>) {
+        self.signature.0.add_assign(&signature.0);
+    }
+
+    /// Add only a `Message` and `PublicKey<E>` to our internal data.
+    ///
+    /// Useful for constructing an aggregate signature, but we
+    /// recommend instead using a custom types like `BitPoPSignedMessage`.
+    pub fn add_message_n_publickey(&mut self, message: &Message, publickey: &PublicKey<E>) {
+        self.messages_n_publickeys.entry(*message)
+            .and_modify(|pk0| pk0.0.add_assign(&publickey.0) )
+            .or_insert(*publickey);
+    }
 
     /// Aggregage BLS signatures assuming they have proofs-of-possession
     pub fn aggregate<'a,S>(&mut self, signed: &'a S) 
@@ -97,13 +114,11 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
         &'a S: Signed<E=E>,
         <&'a S as Signed>::PKG: Borrow<PublicKey<E>>,
     {
-        let signature : E::SignatureGroup = signed.signature().0;
-        for (m,pk) in signed.messages_and_publickeys() {
-            self.messages_n_publickeys.entry(*m.borrow())
-                    .and_modify(|pk0| pk0.0.add_assign(&pk.borrow().0) )
-                    .or_insert(*pk.borrow());
+        let signature = signed.signature();
+        for (message,pubickey) in signed.messages_and_publickeys() {
+            self.add_message_n_publickey(message.borrow(),pubickey.borrow());
         }
-        self.signature.0.add_assign(&signature);
+        self.add_signature(&signature);
     }
 }
 
