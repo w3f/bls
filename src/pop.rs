@@ -329,6 +329,8 @@ where
         Ok(())
     }
 
+    /// Include one signed message, after testing for message and
+    /// proofs-of-possession table agreement, and disjoint publickeys.
     pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),BitPoPError>
     {
         if self.message != signed.message {
@@ -337,6 +339,7 @@ where
         self.add_points(signed.publickey,signed.signature)
     }
 
+    /// Occupied indices bit mask for `self.signers[index]`  
     fn chunk_lookup(&self, index: usize) -> u8 {
         (0..8).into_iter().fold(0u8, |b,j| {
             let i = 8*index + j;
@@ -346,6 +349,8 @@ where
         })
     }
 
+    /// Merge two `BitPoPSignedMessage`, after testing for message
+    /// and proofs-of-possession table agreement, and disjoint publickeys.
     pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),BitPoPError> {
         if self.message != other.message {
             return Err(BitPoPError::MismatchedMessage);
