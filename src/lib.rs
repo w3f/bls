@@ -114,7 +114,8 @@ pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
 
 /// Internal message hash size.  
 ///
-/// We choose 192 bits here although 128 bits (16 bytes) suffices.
+/// We choose 256 bits here so that birthday bound attacks cannot
+/// find messages with the same hash.
 const MESSAGE_SIZE: usize = 32;
 
 /// Internal message hash type.  Short for frequent rehashing
