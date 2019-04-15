@@ -84,6 +84,9 @@
 // #![feature(generic_associated_types)]
 #![feature(associated_type_defaults)]
 
+#[macro_use]
+extern crate arrayref;
+
 // #[macro_use]
 extern crate ff;
 
@@ -101,6 +104,7 @@ use rand::{Rand, Rng};
 pub mod single;
 pub mod distinct;
 pub mod pop;
+pub mod delinear;
 pub mod verifiers;
 // pub mod delinear;
 
