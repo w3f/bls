@@ -6,6 +6,11 @@
 //! batching with explicit randomness, and delinearization in which 
 //! we [treat the hash of all included public keys as a random oracle](https://crypto.stanford.edu/~dabo/pubs/papers/BLSmultisig.html)
 //! 
+//! We caution that delinerized aggregation leans towards slightly
+//! different abstractions than linear aggregation.  In this module,
+//! we select an approach that complements well our linear strategies,
+//! but if you need delinearized aggregation then you should consider
+//! adding a more finely tuned scheme.
 
 use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
 use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
