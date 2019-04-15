@@ -11,7 +11,6 @@
 //!
 //! These proof-of-possession are simply self-signed certificates,
 //! so a BLS signature by each secret key on its own public key.
-//! (TODO: cite Ari too???)
 //! Importantly, the message for this self-signed certificates
 //! must uniquely distinguish the public key for which the signature
 //! establishes a proof-of-possession. 
@@ -31,6 +30,10 @@
 //! `ProofsOfPossession` trait for this data strtcuture as well,
 //! so that the `BitPoPSignedMessage` type provides a signature
 //! data type with reasonable sanity checks.
+
+// Aside about proof-of-possession in the DLOG setting
+// https://twitter.com/btcVeg/status/1085490561082183681
+
 
 use std::borrow::{Borrow,BorrowMut};
 use std::collections::HashMap;
