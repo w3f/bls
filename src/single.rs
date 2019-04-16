@@ -89,8 +89,20 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 
     /// Convert into a `SecretKey` that supports side channel protections,
     /// but does not itself resplit the key.
-    pub fn into_split(&self) -> SecretKey<E> {
-        SecretKey(self.0.clone(),E::Scalar::zero())
+    pub fn into_split_dirty(&self) -> SecretKey<E> {
+        SecretKey {
+            key: [ self.0.clone(), E::Scalar::zero() ],
+            old_unsigned: E::SignatureGroup::zero(),
+            old_signed: E::SignatureGroup::zero(),
+        } 
+    }
+
+    /// Convert into a `SecretKey` applying side channel protections.
+    pub fn into_split<R: Rng>(&self, mut rng: R) -> SecretKey<E> {
+        let mut s = self.into_split_dirty();
+        s.resplit(&mut rng);
+        s.init_point_mutation(rng);
+        s
     }
 
     /// Derive our public key from our secret key
@@ -105,7 +117,18 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 
 /// Secret signing key that is split to provide side channel protection.
 ///
-/// This works because `self.0 * H(message) + self.1 * H(message) = (self.0 + self.1) * H(message)`
+/// A simple key splitting works because
+/// `self.key[0] * H(message) + self.key[1] * H(message) = (self.key[0] + self.key[1]) * H(message)`.
+/// In our case, we mutate the point being signed too by keeping
+/// an old point in both signed and unsigned forms, so our message
+/// point becomes `new_unsigned = H(message) - old_unsigned`, 
+/// we compute `new_signed = self.key[0] * new_unsigned + self.key[1] * new_unsigned`,
+/// and our signature becomes `new_signed + old_signed`.
+/// We save the new signed and unsigned values as old ones, so that adversaries
+/// also cannot know the curves points being multiplied by scalars.
+/// In this, our `init_point_mutation` method signs some random point,
+/// so that even an adversary who tracks all signed messages cannot
+/// foresee the curve points being signed. 
 ///
 /// We require mutable access to the secret key, but interior mutability
 /// can easily be employed, which might resemble:
@@ -126,45 +149,82 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// `SecretKeyVT::write`, so `secret.into_vartime().write(writer)?`.
 /// We deserialize using the `read`, `from_repr`, and `into_split`
 /// methods of `SecretKeyVT`, so roughly
-/// `SecretKeyVT::from_repr(SecretKeyVT::read(reader) ?) ?.into_split()`.
+/// `SecretKeyVT::from_repr(SecretKeyVT::read(reader) ?) ?.into_split(thread_rng())`.
 ///
 /// TODO: Provide sensible `to_bytes` and `from_bytes` methods
 /// for `ZBLS` and `TinyBLS<..>`.
 ///
 /// TODO: Is Pippenger’s algorithm, or another fast MSM algorithm,
 /// secure when used with key splitting?
-pub struct SecretKey<E: EngineBLS>(E::Scalar,E::Scalar);
+pub struct SecretKey<E: EngineBLS> {
+    key: [E::Scalar; 2],
+    old_unsigned: E::SignatureGroup,
+    old_signed: E::SignatureGroup,
+}
 
 impl<E: EngineBLS> Clone for SecretKey<E> {
-    fn clone(&self) -> Self { SecretKey(self.0,self.1) }
+    fn clone(&self) -> Self {
+        SecretKey {
+            key: self.key.clone(),
+            old_unsigned: self.old_unsigned.clone(),
+            old_signed: self.old_signed.clone(),
+        }
+    }
 }
 
 // TODO: Serialization
 
 impl<E: EngineBLS> SecretKey<E> {
+    /// Initialize the signature curve signed point mutation.
+    ///
+    /// Amortized over many signings involing this once costs
+    /// nothing, but each individual invokation costs as much
+    /// as signing.
+    pub fn init_point_mutation<R: Rng>(&mut self, mut rng: R) {
+        let mut s = rng.gen::<E::SignatureGroup>();
+        self.old_unsigned = s;
+        self.old_signed = s;
+        self.old_signed.mul_assign(self.key[0]);
+        s.mul_assign(self.key[1]);
+        self.old_signed.add_assign(&s);
+    }
+
+    /// Generate a secret key that is already split for side channel protection,
+    /// but does not apply signed point mutation.
+    pub fn generate_dirty<R: Rng>(mut rng: R) -> Self {
+        SecretKey {
+            key: [ E::generate(&mut rng), E::generate(&mut rng) ],
+            old_unsigned: E::SignatureGroup::zero(),
+            old_signed: E::SignatureGroup::zero(),
+        }
+    }
+
     /// Generate a secret key that is already split for side channel protection.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
-        SecretKey( E::generate(&mut rng), E::generate(&mut rng) )
+        let mut s = Self::generate_dirty(&mut rng);
+        s.init_point_mutation(rng);
+        s
     }
 
     /// Create a representative usable for operations lacking 
     /// side channel protections.  
     pub fn into_vartime(&self) -> SecretKeyVT<E> {
-        let mut secret = self.0.clone();
-        secret.add_assign(&self.1);
+        let mut secret = self.key[0].clone();
+        secret.add_assign(&self.key[1]);
         SecretKeyVT(secret)
     }
 
     /// Randomly adjust how we split our secret signing key. 
     //
     // An initial call to this function after deserialization or
-    // `into_split` incurs a miniscule risk from side channel attacks
-    // but then protects the highly vulnerable signing operations.
+    // `into_split_dirty` incurs a miniscule risk from side channel
+    // attacks, but then protects the highly vulnerable signing
+    // operations.  `into_split` itself hjandles this.
     pub fn resplit<R: Rng>(&mut self, mut rng: R) {
         // resplit_with(|| Ok(self), rng).unwrap();
         let x = E::generate(&mut rng);
-        self.0.add_assign(&x);
-        self.1.sub_assign(&x);
+        self.key[0].add_assign(&x);
+        self.key[1].sub_assign(&x);
     }
 
     /// Sign without doing the key resplit mutation that provides side channel protection.
@@ -172,15 +232,20 @@ impl<E: EngineBLS> SecretKey<E> {
     /// Avoid using directly without appropriate `replit` calls, but maybe
     /// useful in proof-of-concenpt code, as it does not require a mutable
     /// secret key.
-    pub fn sign_once(&self, message: Message) -> Signature<E> {
-        let mut s = message.hash_to_signature_curve::<E>();
-        let mut t = s.clone();
-        t.mul_assign(self.0);
-        s.mul_assign(self.1);
-        s.add_assign(&t);
+    pub fn sign_once(&mut self, message: Message) -> Signature<E> {
+        let mut z = message.hash_to_signature_curve::<E>();
+        z.sub_assign(&self.old_unsigned);
+        self.old_unsigned = z.clone();
+        let mut t = z.clone();
+        t.mul_assign(self.key[0]);
+        z.mul_assign(self.key[1]);
+        z.add_assign(&t);
+        let old_signed = self.old_signed.clone();
+        self.old_signed = z.clone();
+        z.add_assign(&old_signed);
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
-        Signature(s)
+        Signature(z)
     }
 
     /// Sign after respliting the secret key for side channel protections.
@@ -195,8 +260,8 @@ impl<E: EngineBLS> SecretKey<E> {
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
         let generator = <E::PublicKeyGroup as CurveProjective>::Affine::one();
-        let mut publickey = generator.mul(self.0);
-        publickey.add_assign( & generator.mul(self.1) );
+        let mut publickey = generator.mul(self.key[0]);
+        publickey.add_assign( & generator.mul(self.key[1]) );
         PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
         /*
@@ -387,6 +452,13 @@ impl<E: EngineBLS> KeypairVT<E> {
         KeypairVT { secret, public }
     }
 
+    /// Convert into a `SecretKey` applying side channel protections.
+    pub fn into_split<R: Rng>(&self, rng: R) -> Keypair<E> {
+        let secret = self.secret.into_split(rng);
+        let public = self.public;
+        Keypair { secret, public }
+    }
+
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
     pub fn sign(&self, message: Message) -> SignedMessage<E> {
         let signature = self.secret.sign(message);  
@@ -456,7 +528,7 @@ impl<E: EngineBLS> Keypair<E> {
 /// Message with attached BLS signature
 /// 
 /// 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct SignedMessage<E: EngineBLS> {
     pub message: Message,
     pub publickey: PublicKey<E>,
@@ -572,17 +644,26 @@ mod tests {
     #[test]
     fn single_messages() {
         let good = Message::new(b"ctx",b"test message");
-        let bad = Message::new(b"ctx",b"wrong message");
 
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
         let good_sig = keypair.sign(good);
-        assert!( good_sig == keypair.sign(good) );
-        assert!( good_sig == keypair.into_vartime().sign(good) );
-        let bad_sig  = keypair.sign(bad);
-        assert!( bad_sig == keypair.into_vartime().sign(bad) );
-
         assert!(good_sig.verify_slow());
-        
+
+        let keypair_vt = keypair.into_vartime();
+        assert!( keypair_vt.secret.0 == keypair_vt.into_split(thread_rng()).into_vartime().secret.0 );
+        assert!( good_sig == keypair.sign(good) );
+        assert!( good_sig == keypair_vt.sign(good) );
+
+        let bad = Message::new(b"ctx",b"wrong message");
+        let bad_sig = keypair.sign(bad);
+        assert!( bad_sig == keypair.into_vartime().sign(bad) );
+        assert!( bad_sig.verify() );
+
+        let another = Message::new(b"ctx",b"another message");
+        let another_sig = keypair.sign(another);
+        assert!( another_sig == keypair.into_vartime().sign(another) );
+        assert!( another_sig.verify() );
+
         assert!(keypair.public.verify(good, &good_sig.signature),
                 "Verification of a valid signature failed!");
 
