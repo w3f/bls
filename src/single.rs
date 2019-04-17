@@ -220,6 +220,7 @@ impl<E: EngineBLS> SecretKey<E> {
     // `into_split_dirty` incurs a miniscule risk from side channel
     // attacks, but then protects the highly vulnerable signing
     // operations.  `into_split` itself hjandles this.
+    #[inline(never)]
     pub fn resplit<R: Rng>(&mut self, mut rng: R) {
         // resplit_with(|| Ok(self), rng).unwrap();
         let x = E::generate(&mut rng);
