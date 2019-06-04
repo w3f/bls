@@ -195,6 +195,9 @@ pub trait ProofsOfPossession<E: EngineBLS> {
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize>;
 }
 
+/// Avoiding duplicate keys inside a slice gets costly.  We suggest
+/// improving performance by using a customized data type.
+///
 /// TODO: Evaluate using Deref vs Borrow in this context
 /// TODO: Use specialization here
 impl<E,V> ProofsOfPossession<E> for V
