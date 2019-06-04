@@ -130,7 +130,7 @@ impl Message {
         // h.input(self.message.borrow());
         // h.input(self.signature.0.into_affine().into_uncompressed().as_ref());        
         let mut t = ::merlin::Transcript::new(context);
-        t.commit_bytes(b"", message);
+        t.append_message(b"", message);
         let mut msg = [0u8; MESSAGE_SIZE];
         // h.xof_result().read(&mut msg[..]);
         t.challenge_bytes(b"", &mut msg);

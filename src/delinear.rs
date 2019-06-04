@@ -77,7 +77,7 @@ impl<E: EngineBLS> Delinearized<E> {
     }
     pub fn new_keyed(key: &[u8]) -> Delinearized<E> {
         let mut t = ::merlin::Transcript::new(b"Delinearised BLS");
-        t.commit_bytes(b"key",key);
+        t.append_message(b"key",key);
         Delinearized::new(t)
     }
     pub fn new_batched_rng<R: Rng>(mut rng: R) -> Delinearized<E> {
@@ -95,7 +95,7 @@ impl<E: EngineBLS> Delinearized<E> {
     /// our return type here changes.
     pub fn mask(&self, publickey: &PublicKey<E>) -> E::Scalar {
         let mut t = self.key.clone();
-        t.commit_bytes(b"",publickey.0.into_affine().into_uncompressed().as_ref());
+        t.append_message(b"",publickey.0.into_affine().into_uncompressed().as_ref());
         let mut b = [0u8; 16];
         t.challenge_bytes(b"",&mut b[..]);
         let (x,y) = array_refs!(&b,8,8);

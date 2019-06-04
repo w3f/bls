@@ -593,8 +593,8 @@ impl<E: EngineBLS> SignedMessage<E> {
         // h.input(&self.message.0[..]);
         // h.input(self.signature.0.into_affine().into_uncompressed().as_ref());        
         let mut t = ::merlin::Transcript::new(context);
-        t.commit_bytes(b"msg",&self.message.0[..]);
-        t.commit_bytes(b"out",self.signature.0.into_affine().into_uncompressed().as_ref());        
+        t.append_message(b"msg",&self.message.0[..]);
+        t.append_message(b"out",self.signature.0.into_affine().into_uncompressed().as_ref());        
         let mut seed = Out::default();
         // h.xof_result().read(seed.as_mut());
         t.challenge_bytes(b"", seed.as_mut());
