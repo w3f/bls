@@ -1,4 +1,4 @@
-# bls [![Crates.io](https://img.shields.io/crates/v/bls.svg)](https://crates.io/crates/bls) #
+# bls [![Crates.io](https://img.shields.io/crates/v/bls-like.svg)](https://crates.io/crates/bls-like) #
 
 Boneh-Lynn-Shacham (BLS) signatures have slow signing, very slow verification, require slow and much less secure pairing friendly curves, and tend towards dangerous malleability.  Yet, BLS permits a diverse array of signature aggregation options far beyond any other known signature scheme, which makes BLS a preferred scheme for voting in consensus algorithms and for threshold signatures. 
 
@@ -11,7 +11,7 @@ We cannot claim these abstractions provide miss-use resistance, but they at leas
 You first bring the `bls` crate into your project just as you normally would.
 
 ```rust
-use bls::{Keypair,ZBLS};
+use bls_like::{Keypair,ZBLS};
 
 let keypair = Keypair::<ZBLS>::generate(::rand::thread_rng());
 let message = Message::new(b"Some context",b"Some message");
