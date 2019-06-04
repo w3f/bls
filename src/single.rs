@@ -133,7 +133,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// We require mutable access to the secret key, but interior mutability
 /// can easily be employed, which might resemble:
 /// ```rust,no_run
-/// # extern crate bls;
+/// # extern crate bls_like as bls;
 /// # extern crate rand;
 /// # use bls::{SecretKey,ZBLS,Message};
 /// # use rand::thread_rng;

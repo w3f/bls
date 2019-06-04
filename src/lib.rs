@@ -91,7 +91,7 @@ extern crate arrayref;
 extern crate ff;
 
 extern crate merlin;
-extern crate pairing;
+extern crate paired as pairing;
 extern crate rand;
 // extern crate sha3;
 
