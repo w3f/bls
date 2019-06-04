@@ -213,11 +213,14 @@ where
 
     fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
         self.deref().get(index).cloned()
-        // .map(|pk| { debug_assert!( Some(index) == self.find(&pk) ); pk })
+        .map(|publickey| {
+            debug_assert!( Some(index) == self.deref().iter().position(|pk| *pk==publickey) );
+            publickey
+        })
     }
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize> {
         self.deref().iter().position(|pk| *pk==*publickey)
-        // .map(|i| { debug_assert!( Some(publickey) == self.lookup(i) ); i })
+        .map(|index| { debug_assert!( Some(publickey) == self.deref().get(index) ); index })
     }
 }
 
@@ -323,7 +326,9 @@ where
     pub fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
         let i = self.proofs_of_possession.find(&publickey)
             .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
-        debug_assert!( self.proofs_of_possession.lookup(i) == Some(publickey), "Invalid ProofsOfPossession implementation" );
+        if self.proofs_of_possession.lookup(i) != Some(publickey) {
+            return Err(BitPoPError::BadPoP("Invalid ProofsOfPossession implementation"));
+        }
         let b = 1 << (i % 8);
         let s = &mut self.signers.borrow_mut()[i / 8];
         if *s & b != 0 { return Err(BitPoPError::RepeatedSigners); }
