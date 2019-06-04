@@ -213,14 +213,21 @@ where
 
     fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
         self.deref().get(index).cloned()
-        .map(|publickey| {
-            debug_assert!( Some(index) == self.deref().iter().position(|pk| *pk==publickey) );
-            publickey
+        // Invalidate entry if duplicated
+        .filter(|publickey| {
+            Some(index) == self.deref().iter().position(|pk| *pk==publickey);
+            debug_assert!(b, "Incorrect ProofsOfPossession implementation with duplicate publickeys");
+            b
         })
     }
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize> {
         self.deref().iter().position(|pk| *pk==*publickey)
-        .map(|index| { debug_assert!( Some(publickey) == self.deref().get(index) ); index })
+        // Invalidate entry if duplicated
+        .filter(|index| {
+            Some(publickey) == self.deref().get(index);
+            debug_assert!(b, "Incorrect ProofsOfPossession implementation with duplicate publickeys");
+            b
+        })
     }
 }
 
@@ -327,7 +334,7 @@ where
         let i = self.proofs_of_possession.find(&publickey)
             .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
         if self.proofs_of_possession.lookup(i) != Some(publickey) {
-            return Err(BitPoPError::BadPoP("Invalid ProofsOfPossession implementation"));
+            return Err(BitPoPError::BadPoP("Invalid ProofsOfPossession implementation with missmatched lookups"));
         }
         let b = 1 << (i % 8);
         let s = &mut self.signers.borrow_mut()[i / 8];
