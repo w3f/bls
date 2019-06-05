@@ -216,21 +216,21 @@ where
 
     fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
         self.deref().get(index).cloned()
-        // Invalidate entry if duplicated
-        .filter(|publickey| {
-            Some(index) == self.deref().iter().position(|pk| *pk==publickey);
-            debug_assert!(b, "Incorrect ProofsOfPossession implementation with duplicate publickeys");
-            b
-        })
+        // Checked for duplicates in BitPoPSignedMessage
+        // .filter(|publickey| {
+        //     Some(index) == self.deref().iter().position(|pk| *pk==publickey);
+        //     debug_assert!(b, "Incorrect ProofsOfPossession implementation with duplicate publickeys");
+        //     b
+        // })
     }
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize> {
         self.deref().iter().position(|pk| *pk==*publickey)
-        // Invalidate entry if duplicated
-        .filter(|index| {
-            Some(publickey) == self.deref().get(index);
-            debug_assert!(b, "Incorrect ProofsOfPossession implementation with duplicate publickeys");
-            b
-        })
+        // Checked for duplicates in BitPoPSignedMessage
+        // .filter(|index| {
+        //     Some(publickey) == self.deref().get(index);
+        //     debug_assert!(b, "Incorrect ProofsOfPossession implementation with duplicate publickeys");
+        //     b
+        // })
     }
 }
 
@@ -304,6 +304,11 @@ where
         for i in 0..8*self.signers.borrow().len() {
             if self.signers.borrow()[i / 8] & (1 << (i % 8)) != 0 {
                 let pop_pk = self.proofs_of_possession.lookup(i).unwrap().0;
+                if Some(i) != self.proofs_of_possession.find(&pop_pk) {
+                    // unreachable due to check in add points
+                    debug_assert!(false, "Incorrect ProofsOfPossession implementation with duplicate publickeys" );
+                    continue;
+                }
                 publickey.add_assign(&pop_pk);
             }
         }
@@ -333,7 +338,7 @@ where
         BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
     }
 
-    pub fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
+    fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),BitPoPError> {
         let i = self.proofs_of_possession.find(&publickey)
             .ok_or(BitPoPError::BadPoP("Mismatched proof-of-possession")) ?;
         if self.proofs_of_possession.lookup(i) != Some(publickey) {
@@ -362,7 +367,12 @@ where
         (0..8).into_iter().fold(0u8, |b,j| {
             let i = 8*index + j;
             let pk = self.proofs_of_possession.lookup(i)
-                .map(|pk| { debug_assert!( Some(i) == self.proofs_of_possession.find(&pk) ); pk });
+                .filter(|pk| {
+                    // bb = true always due to check in add_points
+                    let bb = Some(i) == self.proofs_of_possession.find(&pk);
+                    debug_assert!(bb , "Incorrect ProofsOfPossession implementation with duplicate publickeys" );
+                    bb
+                });
             b | pk.map_or(1u8 << j, |_| 0u8)
         })
     }
