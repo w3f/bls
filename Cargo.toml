@@ -6,7 +6,7 @@ homepage = "https://github.com/w3f/bls"
 license = "MIT/Apache-2.0"
 name = "bls-like"
 repository = "https://github.com/w3f/bls"
-version = "0.0.1"
+version = "0.0.2"
 
 [dependencies]
 arrayref = "0.3"
@@ -29,3 +29,9 @@ version = "0.15"
 ## branch = "derives_borrows_etc0"
 ## git = "https://github.com/mmaker/pairing"
 ## branch = "master"
+
+[dependencies.serde]
+version = "^1.0"
+default-features = false
+optional = true
+

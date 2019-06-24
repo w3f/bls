@@ -311,10 +311,24 @@ impl<E: EngineBLS>  PartialEq<Self> for $wrapper<E> {
 
 impl <E: EngineBLS> Eq for $wrapper<E> {}
 
-// TODO: PartialOrd & Ord
-
     }
 }  // macro_rules!
+
+#[cfg(feature = "serde")]
+fn serde_error_from_group_decoding_error(err: GroupDecodingError) -> ::serde::de::Error {
+    match err {
+        GroupDecodingError::NotOnCurve
+            => E::custom("Point not on curve"),
+        GroupDecodingError::NotInSubgroup
+            => E::custom("Point not in prime order subgroup"),
+        GroupDecodingError::CoordinateDecodingError(_s, _pfde)  // Ignore PrimeFieldDecodingError
+            => E::custom("Coordinate decoding error"),
+        GroupDecodingError::UnexpectedCompressionMode
+            => E::custom("Unexpected compression mode"),
+        GroupDecodingError::UnexpectedInformation
+            => E::custom("Invalid length or other unexpected information"),
+    }
+}
 
 macro_rules! compression {
     ($wrapper:tt,$group:tt) => {
@@ -347,6 +361,34 @@ impl<E: EngineBLS> $wrapper<E> {
         } // <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::size() 
         compressed.as_mut().copy_from_slice(slice);
         $wrapper::<E>::decompress(compressed)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<E: EngineBLS> ::serde::Serialize for $wrapper<E> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: ::serde::Serializer {
+        serializer.serialize_bytes(self.compress().as_ref())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'a,E: EngineBLS> ::serde::Deserialize<'d> for $wrapper<E> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
+        struct MyVisitor;
+
+        impl<'d> ::serde::de::Visitor<'d> for MyVisitor {
+            type Value = $wrapper<E>;
+
+            fn expecting(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                formatter.write_str(Self::Value::DESCRIPTION)
+            }
+
+            fn visit_bytes<E>(self, bytes: &[u8]) -> Result<$wrapper<E>, E> where E: ::serde::de::Error {
+                $wrapper::<E>::decompress_from_slice(bytes)
+                .map_err(serde_error_from_signature_error)
+            }
+        }
+        deserializer.deserialize_bytes(MyVisitor)
     }
 }
 
@@ -641,13 +683,30 @@ impl<E: EngineBLS> SignedMessage<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    
+
+    fn zbls_usual_bytes_test(x: SignedMessage<ZBLS>) -> SignedMessage<ZBLS> {
+        let SignedMessage { message, publickey, signature } = x;
+        let publickey = PublicKey::<ZBLS>::from_bytes(publickey.to_bytes()).unwrap();
+        let signature = Signature::<ZBLS>::from_bytes(signature.to_bytes()).unwrap();
+        SignedMessage { message, publickey, signature }
+    }
+
+    pub type TBLS = TinyBLS<::pairing::bls12_381::Bls12>;
+
+    fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
+        let SignedMessage { message, publickey, signature } = x;
+        let publickey = PublicKey::<TBLS>::from_bytes(publickey.to_bytes()).unwrap();        
+        let signature = Signature::<TBLS>::from_bytes(signature.to_bytes()).unwrap();
+        SignedMessage { message, publickey, signature }
+    }
 
     #[test]
     fn single_messages() {
         let good = Message::new(b"ctx",b"test message");
 
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        let good_sig = keypair.sign(good);
+        let good_sig = zbls_usual_bytes_test(keypair.sign(good));
         assert!(good_sig.verify_slow());
 
         let keypair_vt = keypair.into_vartime();
@@ -656,7 +715,7 @@ mod tests {
         assert!( good_sig == keypair_vt.sign(good) );
 
         let bad = Message::new(b"ctx",b"wrong message");
-        let bad_sig = keypair.sign(bad);
+        let bad_sig = zbls_usual_bytes_test(keypair.sign(bad));
         assert!( bad_sig == keypair.into_vartime().sign(bad) );
         assert!( bad_sig.verify() );
 

@@ -303,13 +303,13 @@ where
         let mut publickey = E::PublicKeyGroup::zero();
         for i in 0..8*self.signers.borrow().len() {
             if self.signers.borrow()[i / 8] & (1 << (i % 8)) != 0 {
-                let pop_pk = self.proofs_of_possession.lookup(i).unwrap().0;
+                let pop_pk = self.proofs_of_possession.lookup(i).unwrap();
                 if Some(i) != self.proofs_of_possession.find(&pop_pk) {
                     // unreachable due to check in add points
                     debug_assert!(false, "Incorrect ProofsOfPossession implementation with duplicate publickeys" );
                     continue;
                 }
-                publickey.add_assign(&pop_pk);
+                publickey.add_assign(&pop_pk.0);
             }
         }
         once((self.message.clone(), PublicKey(publickey)))
