@@ -302,12 +302,27 @@ impl ::std::error::Error for PoPError {
 ///
 /// You must provide a `ProofsOfPossession` for this, likely by
 /// implementing it for your own data structures.
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct BitPoPSignedMessage<E: EngineBLS, POP: ProofsOfPossession<E>> {
     proofs_of_possession: POP,
     signers: <POP as ProofsOfPossession<E>>::Signers,
     message: Message,
     signature: Signature<E>,
+}
+
+impl<'a,E,POP> Clone for BitPoPSignedMessage<E,POP>
+where 
+    E: EngineBLS,
+    POP: ProofsOfPossession<E>+Clone,
+{
+    fn clone(&self) -> BitPoPSignedMessage<E,POP> {
+        BitPoPSignedMessage {
+            proofs_of_possession: self.proofs_of_possession.clone(),
+            signers: self.signers.clone(),
+            message: self.message,
+            signature: self.signature.clone(),
+        }
+    }
 }
 
 impl<'a,E,POP> Signed for &'a BitPoPSignedMessage<E,POP> 
@@ -409,6 +424,240 @@ where
 }
 
 
+/// One individual message with attached aggreggate BLS signatures
+/// from signers for whom we previously checked proofs-of-possession,
+/// and with the singers presented as a compact bitfield.
+///
+/// We may aggregage any number of duplicate signatures per signer here,
+/// unlike `CountPoPSignedMessage`, but our serialized signature costs
+/// one 96 or or 48 bytes compressed curve point, plus the size of
+/// `ProofsOfPossession::Signers` times log of the largest duplicate
+/// count.
+///
+/// You must provide a `ProofsOfPossession` for this, likely by
+/// implementing it for your own data structures.
+// #[derive(Clone)]
+pub struct CountPoPSignedMessage<E: EngineBLS, POP: ProofsOfPossession<E>> {
+    proofs_of_possession: POP,
+    signers: Vec<<POP as ProofsOfPossession<E>>::Signers>,
+    message: Message,
+    signature: Signature<E>,
+    /// Errors if a duplicate signature count would exceed this number.  
+    /// We suggest rounding up to the nearest power of two.
+    pub max_duplicates: usize,
+}
+
+impl<'a,E,POP> Clone for CountPoPSignedMessage<E,POP>
+where 
+    E: EngineBLS,
+    POP: ProofsOfPossession<E>+Clone,
+{
+    fn clone(&self) -> CountPoPSignedMessage<E,POP> {
+        CountPoPSignedMessage {
+            proofs_of_possession: self.proofs_of_possession.clone(),
+            signers: self.signers.clone(),
+            message: self.message,
+            signature: self.signature.clone(),
+            max_duplicates: self.max_duplicates,
+        }
+    }
+}
+
+impl<'a,E,POP> Signed for &'a CountPoPSignedMessage<E,POP> 
+where
+    E: EngineBLS,
+    POP: ProofsOfPossession<E>,
+{
+    type E = E;
+
+    type M = Message;
+    type PKG = PublicKey<E>;
+
+    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+
+    fn messages_and_publickeys(self) -> Self::PKnM {
+        let mut publickey = E::PublicKeyGroup::zero();
+        for signers in self.signers.iter().rev().map(|signers| signers.borrow()) {
+            publickey.double();
+            for i in 0..8*signers.len() {
+                if signers[i / 8] & (1 << (i % 8)) != 0 {
+                    let pop_pk = self.proofs_of_possession.lookup(i).unwrap();
+                    if Some(i) != self.proofs_of_possession.find(&pop_pk) {
+                        // unreachable due to check in add points
+                        debug_assert!(false, "Incorrect ProofsOfPossession implementation with duplicate publickeys" );
+                        continue;
+                    }
+                    publickey.add_assign(&pop_pk.0);
+                }
+            }
+        }
+        once((self.message.clone(), PublicKey(publickey)))
+    }
+
+    fn signature(&self) -> Signature<E> { self.signature }
+
+    fn verify(self) -> bool {
+        // We have already aggregated distinct messages, so our distinct
+        // message verification code provides reasonable optimizations,
+        // except the public keys need not be normalized here. 
+        // We foresee verification via gaussian elimination being
+        // significantly faster, but requiring affine keys.
+        verify_with_distinct_messages(self,true)
+    }
+}
+
+impl<E,POP> CountPoPSignedMessage<E,POP> 
+where
+    E: EngineBLS,
+    POP: ProofsOfPossession<E>,
+{
+    pub fn new(proofs_of_possession: POP, message: Message) -> CountPoPSignedMessage<E,POP> {
+        let signers = vec![proofs_of_possession.new_signers(); 1];
+        let signature = Signature(E::SignatureGroup::zero());
+        let max_duplicates = 16;
+        CountPoPSignedMessage { proofs_of_possession, signers, message, signature, max_duplicates }
+    }
+
+    /*
+    fn check_one_lookup(&self, index: usize) -> Result<(),PoPError> {
+        let e = PoPError::BadPoP("Invalid ProofsOfPossession implementation with missmatched lookups");
+        self.proofs_of_possession.lookup(index).filter(|pk| {
+            Some(index) == self.proofs_of_possession.find(&pk)
+        }).map(|_| ()).ok_or(e)
+    }
+    */
+
+    fn reserve_depth(&mut self, count: usize) {
+        let l = 0usize.leading_zeros() - count.leading_zeros();
+        if l as usize <= self.signers.len() { return; }
+        let l = l as usize - self.signers.len();
+        self.signers.reserve(l);
+        for i in 0..l {
+            self.signers.push(self.proofs_of_possession.new_signers());
+        }
+    }
+
+    fn trim(&mut self) {
+        let empty = |s: &POP::Signers| s.borrow().iter().all(|b| *b == 0u8);
+        let c = self.signers.len() - self.signers.iter().rev().take_while(|s| empty(&*s)).count();
+        self.signers.truncate(c)
+    }
+
+    fn test_count(&self, count: usize) -> Result<(),PoPError> {
+        if count >= self.max_duplicates || count >= usize::max_value() {
+            return Err(PoPError::RepeatedSigners);
+        }
+        Ok(())
+    }
+
+    /// Get the count of the number of duplicate signatures by the public key with a given index.
+    fn get_count(&self, index: usize) -> usize {
+        let mut count = 0;
+        for signers in self.signers.iter().rev().map(|signers| signers.borrow()) {
+            count *= 2;
+            if signers[index / 8] & (1 << (index % 8)) != 0 {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Set the count of the number of duplicate signatures by the public key with a given index.
+    /// Always call test_count before invoking this method. 
+    fn set_count(&mut self, index: usize, mut count: usize) {
+        self.reserve_depth(count);
+        for signers in self.signers.iter_mut().map(|signers| signers.borrow_mut()) {
+            if count & 1usize != 0 {
+                signers[index / 8] |= 1 << (index % 8);
+            } else {
+                signers[index / 8] &= ! (1 << (index % 8));
+            }
+            count /= 2;
+        }
+    }
+
+
+    fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),PoPError> {
+        let i = self.proofs_of_possession.find(&publickey)
+            .ok_or(PoPError::BadPoP("Mismatched proof-of-possession")) ?;
+        if self.proofs_of_possession.lookup(i) != Some(publickey) {
+            return Err(PoPError::BadPoP("Invalid ProofsOfPossession implementation with missmatched lookups"));
+        }
+        let count = self.get_count(i) + 1;
+        self.test_count(count) ?;
+        self.set_count(i,count);
+        self.signature.0.add_assign(&signature.0);
+        Ok(())
+    }
+
+    /// Include one signed message, after testing for message and
+    /// proofs-of-possession table agreement, and disjoint publickeys.
+    pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),PoPError>
+    {
+        if self.message != signed.message {
+            return Err(PoPError::MismatchedMessage);
+        }
+        self.add_points(signed.publickey,signed.signature)
+    }
+
+
+    pub fn add_bitpop(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),PoPError> {
+        if self.message != other.message {
+            return Err(PoPError::MismatchedMessage);
+        }
+        if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
+            return Err(PoPError::BadPoP("Mismatched proof-of-possession"));
+        }
+        let os = other.signers.borrow();
+        for offset in 0..self.signers[0].borrow().len() {
+            if self.signers.iter().fold(os[offset], |b,s| b | s.borrow()[offset]) 
+                & ! chunk_lookups(&self.proofs_of_possession, offset) != 0u8 
+            {
+                return Err(PoPError::BadPoP("Absent signer"));
+            }
+            for j in 0..8 {
+                let mut count = self.get_count(8*offset+j);
+                if os[offset] & (1 << j) != 0 { count += 1; }
+                self.test_count(count) ?;
+            }
+        }
+        for index in 0..8*self.signers[0].borrow().len() {
+            let count = self.get_count(index);
+            if os[index / 8] & (1 << (index % 8)) != 0 { self.set_count(index,count+1); }
+        }
+        self.signature.0.add_assign(&other.signature.0);
+        Ok(())
+    }
+
+    /// Merge two `CountPoPSignedMessage`, after testing for message
+    /// and proofs-of-possession table agreement, and disjoint publickeys.
+    pub fn merge(&mut self, other: &CountPoPSignedMessage<E,POP>) -> Result<(),PoPError> {
+        if self.message != other.message {
+            return Err(PoPError::MismatchedMessage);
+        }
+        if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
+            return Err(PoPError::BadPoP("Mismatched proof-of-possession"));
+        }
+        for offset in 0..self.signers[0].borrow().len() {
+            if self.signers.iter().chain(&other.signers).fold(0u8, |b,s| b | s.borrow()[offset])
+               & ! chunk_lookups(&self.proofs_of_possession, offset) != 0u8
+            {
+                return Err(PoPError::BadPoP("Absent signer"));
+            }
+            for j in 0..8 {
+                let index = 8*offset+j;
+                self.test_count( self.get_count(index).saturating_add(other.get_count(index)) )?;
+            }
+        }
+        for index in 0..8*self.signers[0].borrow().len() {
+            self.set_count(index, self.get_count(index) + other.get_count(index));
+        }
+        self.signature.0.add_assign(&other.signature.0);
+        Ok(())
+    }    
+}
+
+
 #[cfg(test)]
 mod tests {
     use rand::{thread_rng};  // Rng
@@ -416,7 +665,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bit_pop() {
+    fn proofs_of_possession() {
         let msg1 = Message::new(b"ctx",b"some message");
         let msg2 = Message::new(b"ctx",b"another message");
 
@@ -428,6 +677,7 @@ mod tests {
         let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
 
         let mut bitpop1 = BitPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         for (i,sig) in sigs1.iter().enumerate().take(2) {
             assert!( bitpop1.add(sig).is_ok() == (i<4));
             assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
@@ -474,5 +724,28 @@ mod tests {
         assert!( ! verifiers::verify_simple(&bitpop1) );
         assert!( ! verifiers::verify_with_distinct_messages(&bitpop1,false) );
         */
+
+        let mut countpop1 = CountPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        assert!(countpop1.signers.len() == 1);
+        assert!( countpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+        assert!( countpop1.add_bitpop(&bitpop1).is_ok() );
+        assert!(bitpop1.signature == countpop1.signature);
+        assert!(countpop1.signers.len() == 1);
+        assert!(bitpop1.messages_and_publickeys().next() == countpop1.messages_and_publickeys().next() );
+        assert!( countpop1.verify() ); 
+        for (i,sig) in sigs1.iter().enumerate().take(3) {
+            assert!( countpop1.add(sig).is_ok() == (i<4));
+            assert!( countpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+        }
+        assert!( countpop1.add_bitpop(&bitpop1a).is_ok() );
+        assert!( countpop1.add_bitpop(&bitpop1a).is_ok() );
+        assert!( countpop1.add_bitpop(&bitpop2).is_err() );
+        let countpop2 = countpop1.clone();
+        assert!( countpop1.merge(&countpop2).is_ok() );
+        assert!( verifiers::verify_unoptimized(&countpop1) );
+        assert!( verifiers::verify_simple(&countpop1) );
+        assert!( verifiers::verify_with_distinct_messages(&countpop1,false) );
+        countpop1.max_duplicates = 4;
+        assert!( countpop1.merge(&countpop2).is_err() );
     }
 }
