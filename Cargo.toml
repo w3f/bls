@@ -6,7 +6,7 @@ homepage = "https://github.com/w3f/bls"
 license = "MIT/Apache-2.0"
 name = "bls-like"
 repository = "https://github.com/w3f/bls"
-version = "0.0.2"
+version = "0.0.3"
 
 [dependencies]
 arrayref = "0.3"
