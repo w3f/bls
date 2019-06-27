@@ -532,7 +532,7 @@ where
         if l as usize <= self.signers.len() { return; }
         let l = l as usize - self.signers.len();
         self.signers.reserve(l);
-        for i in 0..l {
+        for _i in 0..l {
             self.signers.push(self.proofs_of_possession.new_signers());
         }
     }
