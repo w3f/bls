@@ -15,6 +15,7 @@
 use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
 use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
 use rand::{Rng, thread_rng};
+use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
 
 use std::collections::HashMap;
 
@@ -34,7 +35,7 @@ use super::verifiers::verify_with_distinct_messages;
 /// should consider a proof-of-possession scheme, which requiees all
 /// signers register in advance.
 pub struct Delinearized<E: EngineBLS> {
-    key: ::merlin::Transcript,
+    key: Shake128,
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
     signature: Signature<E>,
 }
@@ -68,7 +69,7 @@ impl<'a,E: EngineBLS> Signed for &'a Delinearized<E> {
 }
 
 impl<E: EngineBLS> Delinearized<E> {
-    pub fn new(key: ::merlin::Transcript) -> Delinearized<E> {
+    pub fn new(key: Shake128) -> Delinearized<E> {
         Delinearized {
             key,
             messages_n_publickeys: HashMap::new(),
@@ -76,8 +77,11 @@ impl<E: EngineBLS> Delinearized<E> {
         }
     }
     pub fn new_keyed(key: &[u8]) -> Delinearized<E> {
-        let mut t = ::merlin::Transcript::new(b"Delinearised BLS");
-        t.append_message(b"key",key);
+        let mut t = Shake128::default();
+        t.input(b"Delinearised BLS with key:");
+        let l = key.len() as u64;
+        t.input(l.to_le_bytes());
+        t.input(key);
         Delinearized::new(t)
     }
     pub fn new_batched_rng<R: Rng>(mut rng: R) -> Delinearized<E> {
@@ -95,9 +99,9 @@ impl<E: EngineBLS> Delinearized<E> {
     /// our return type here changes.
     pub fn mask(&self, publickey: &PublicKey<E>) -> E::Scalar {
         let mut t = self.key.clone();
-        t.append_message(b"",publickey.0.into_affine().into_uncompressed().as_ref());
+        t.input(publickey.0.into_affine().into_uncompressed().as_ref());
         let mut b = [0u8; 16];
-        t.challenge_bytes(b"",&mut b[..]);
+        t.xof_result().read(&mut b[..]);
         let (x,y) = array_refs!(&b,8,8);
         let mut x: <E::Scalar as PrimeField>::Repr = u64::from_le_bytes(*x).into();
         let y: <E::Scalar as PrimeField>::Repr = u64::from_le_bytes(*y).into();
@@ -153,8 +157,8 @@ impl<E: EngineBLS> Delinearized<E> {
     // TODO: See https://github.com/dalek-cryptography/merlin/pull/37
     pub fn agreement(&self, other: &Delinearized<E>) -> bool {
         let mut c = [[0u8; 16]; 2];
-        self.key.clone().challenge_bytes(b"",&mut c[0]);
-        other.key.clone().challenge_bytes(b"",&mut c[1]);
+        self.key.clone().xof_result().read(&mut c[0]);
+        other.key.clone().xof_result().read(&mut c[1]);
         c[0] == c[1]
     }
 
@@ -182,7 +186,7 @@ type PublicKeyUncompressed<E> = <<<E as EngineBLS>::$group as CurveProjective>::
 
 #[derive(Clone)]
 pub struct DelinearizedRepeatedSigners<E: EngineBLS> {
-    key: ::merlin::Transcript,
+    key: Shake128,
     messages_n_publickeys: HashMap<PublicKeyUncompressed<E>,(Message,PublicKey<E>)>,
     signature: Signature<E>,
 }

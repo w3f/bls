@@ -28,6 +28,7 @@ use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  
 use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 // use rand_chacha::ChaChaRng;
+use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
 
 // use std::borrow::{Borrow,BorrowMut};
 use std::iter::once;
@@ -619,7 +620,7 @@ impl<E: EngineBLS> SignedMessage<E> {
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }
 
-    /// Raw bytes output from a BLS signature regarded as a VRF.
+    /// Hash output from a BLS signature regarded as a VRF.
     ///
     /// If you are not the signer then you must verify the VRF before calling this method.
     ///
@@ -629,17 +630,24 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// construction from Theorem 2 on page 32 in appendex C of
     /// ["Ouroboros Praos: An adaptively-secure, semi-synchronous proof-of-stake blockchain"](https://eprint.iacr.org/2017/573.pdf)
     /// by Bernardo David, Peter Gazi, Aggelos Kiayias, and Alexander Russell.
-    pub fn make_bytes<Out: Default + AsMut<[u8]>>(&self, context: &'static [u8]) -> Out {
-        // use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
-        // let mut h = Shake128::default();
-        // h.input(&self.message.0[..]);
-        // h.input(self.signature.0.into_affine().into_uncompressed().as_ref());        
-        let mut t = ::merlin::Transcript::new(context);
-        t.append_message(b"msg",&self.message.0[..]);
-        t.append_message(b"out",self.signature.0.into_affine().into_uncompressed().as_ref());        
+    pub fn vrf_hash<H: Input>(&self, h: &mut H) {
+        h.input(b"msg");
+        h.input(&self.message.0[..]);
+        h.input(b"out");
+        h.input(self.signature.0.into_affine().into_uncompressed().as_ref());
+    }
+
+    /// Raw bytes output from a BLS signature regarded as a VRF.
+    ///
+    /// If you are not the signer then you must verify the VRF before calling this method.
+    ///
+    /// If called with distinct contexts then outputs should be independent.
+    pub fn make_bytes<Out: Default + AsMut<[u8]>>(&self, context: &[u8]) -> Out {
+        let mut t = Shake128::default();
+        t.input(context);
+        self.vrf_hash(&mut t);
         let mut seed = Out::default();
-        // h.xof_result().read(seed.as_mut());
-        t.challenge_bytes(b"", seed.as_mut());
+        t.xof_result().read(seed.as_mut());
         seed
     }
 
@@ -649,7 +657,7 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// If you are not the signer then you must verify the VRF before calling this method.
     ///
     /// We expect most users would prefer the less generic `VRFInOut::make_chacharng` method.
-    pub fn make_rng<R: SeedableRng>(&self, context: &'static [u8]) -> R {
+    pub fn make_rng<R: SeedableRng>(&self, context: &[u8]) -> R {
         R::from_seed(self.make_bytes::<R::Seed>(context))
     }
     */
@@ -665,7 +673,7 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// construction from Theorem 2 on page 32 in appendex C of
     /// ["Ouroboros Praos: An adaptively-secure, semi-synchronous proof-of-stake blockchain"](https://eprint.iacr.org/2017/573.pdf)
     /// by Bernardo David, Peter Gazi, Aggelos Kiayias, and Alexander Russell.
-    pub fn make_chacharng(&self, context: &'static [u8]) -> ChaChaRng {
+    pub fn make_chacharng(&self, context: &[u8]) -> ChaChaRng {
         // self.make_rng::<ChaChaRng>(context)
         // TODO: Remove this ugly hack whenever rand gets updated to 0.5 or later
         let bytes = self.make_bytes::<[u8;32]>(context);

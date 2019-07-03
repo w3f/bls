@@ -90,10 +90,9 @@ extern crate arrayref;
 // #[macro_use]
 extern crate ff;
 
-extern crate merlin;
 extern crate paired as pairing;
 extern crate rand;
-// extern crate sha3;
+extern crate sha3;
 
 use std::borrow::Borrow;
 
@@ -125,15 +124,17 @@ pub struct Message(pub [u8; MESSAGE_SIZE]);
 
 impl Message {
     pub fn new(context: &'static [u8], message: &[u8]) -> Message {
-        // use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
-        // let mut h = Shake128::default();
-        // h.input(self.message.borrow());
-        // h.input(self.signature.0.into_affine().into_uncompressed().as_ref());        
-        let mut t = ::merlin::Transcript::new(context);
-        t.append_message(b"", message);
+        use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+        let mut h = Shake128::default();
+        h.input(context);
+        let l = message.len() as u64;
+        h.input(l.to_le_bytes());
+        h.input(message);
+        // let mut t = ::merlin::Transcript::new(context);
+        // t.append_message(b"", message);
         let mut msg = [0u8; MESSAGE_SIZE];
-        // h.xof_result().read(&mut msg[..]);
-        t.challenge_bytes(b"", &mut msg);
+        h.xof_result().read(&mut msg[..]);
+        // t.challenge_bytes(b"", &mut msg);
         Message(msg)
     }
 
