@@ -459,7 +459,7 @@ where
     }
 
 
-    pub fn add_bitpop(&mut self, other: &BitSignedMessage<E,POP>) -> Result<(),SignerTableError> {
+    pub fn add_bitsig(&mut self, other: &BitSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
             return Err(SignerTableError::MismatchedMessage);
         }
@@ -534,76 +534,76 @@ mod tests {
         keypairs.push(dup);
         let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
 
-        let mut bitpop1 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
-        assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+        let mut bitsig1 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        assert!( bitsig1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         for (i,sig) in sigs1.iter().enumerate().take(2) {
-            assert!( bitpop1.add(sig).is_ok() == (i<4));
-            assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+            assert!( bitsig1.add(sig).is_ok() == (i<4));
+            assert!( bitsig1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         }
-        let mut bitpop1a = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        let mut bitsig1a = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
         for (i,sig) in sigs1.iter().enumerate().skip(2) {
-            assert!( bitpop1a.add(sig).is_ok() == (i<4));
-            assert!( bitpop1a.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+            assert!( bitsig1a.add(sig).is_ok() == (i<4));
+            assert!( bitsig1a.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         }
-        assert!( bitpop1.merge(&bitpop1a).is_ok() );
-        assert!( bitpop1.merge(&bitpop1a).is_err() );
-        assert!( verifiers::verify_unoptimized(&bitpop1) );
-        assert!( verifiers::verify_simple(&bitpop1) );
-        assert!( verifiers::verify_with_distinct_messages(&bitpop1,false) );
+        assert!( bitsig1.merge(&bitsig1a).is_ok() );
+        assert!( bitsig1.merge(&bitsig1a).is_err() );
+        assert!( verifiers::verify_unoptimized(&bitsig1) );
+        assert!( verifiers::verify_simple(&bitsig1) );
+        assert!( verifiers::verify_with_distinct_messages(&bitsig1,false) );
         // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
 
         let sigs2 = keypairs.iter_mut().map(|k| k.sign(msg2)).collect::<Vec<_>>();  
-        let mut bitpop2 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
+        let mut bitsig2 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
         for sig in sigs2.iter().take(3) {
-            assert!( bitpop2.add(sig).is_ok() );
+            assert!( bitsig2.add(sig).is_ok() );
         }
-        assert!( bitpop1.merge(&bitpop2).is_err() );
+        assert!( bitsig1.merge(&bitsig2).is_err() );
 
         let mut multimsg = pop::BatchAssumingProofsOfPossession::<ZBLS>::new();
-        multimsg.aggregate(&bitpop1);
-        multimsg.aggregate(&bitpop2);
+        multimsg.aggregate(&bitsig1);
+        multimsg.aggregate(&bitsig2);
         assert!( multimsg.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         assert!( verifiers::verify_unoptimized(&multimsg) );
         assert!( verifiers::verify_simple(&multimsg) );
         assert!( verifiers::verify_with_distinct_messages(&multimsg,false) );
 
         let oops = Keypair::<ZBLS>::generate(thread_rng()).sign(msg2);
-        assert!( bitpop1.add_points(oops.publickey,oops.signature).is_err() );
+        assert!( bitsig1.add_points(oops.publickey,oops.signature).is_err() );
         /*
         TODO: Test that adding signers for an incorrect message fails, but this version angers teh borrow checker.
         let mut oops_pop = pop.clone();
         oops_pop.push(oops.publickey);
         // We should constriuvt a better test here because this only works
         // because pop.len() is not a multiple of 8.
-        bitpop1.proofs_of_possession = &oops_pop[..];
-        bitpop1.add_points(oops.publickey,oops.signature).unwrap();
-        assert!( ! bitpop1.verify() );
-        assert!( ! verifiers::verify_unoptimized(&bitpop1) );
-        assert!( ! verifiers::verify_simple(&bitpop1) );
-        assert!( ! verifiers::verify_with_distinct_messages(&bitpop1,false) );
+        bitsig1.proofs_of_possession = &oops_pop[..];
+        bitsig1.add_points(oops.publickey,oops.signature).unwrap();
+        assert!( ! bitsig1.verify() );
+        assert!( ! verifiers::verify_unoptimized(&bitsig1) );
+        assert!( ! verifiers::verify_simple(&bitsig1) );
+        assert!( ! verifiers::verify_with_distinct_messages(&bitsig1,false) );
         */
 
-        let mut countpop1 = CountSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
-        assert!(countpop1.signers.len() == 1);
-        assert!( countpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
-        assert!( countpop1.add_bitpop(&bitpop1).is_ok() );
-        assert!(bitpop1.signature == countpop1.signature);
-        assert!(countpop1.signers.len() == 1);
-        assert!(bitpop1.messages_and_publickeys().next() == countpop1.messages_and_publickeys().next() );
-        assert!( countpop1.verify() ); 
+        let mut countsig = CountSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        assert!(countsig.signers.len() == 1);
+        assert!( countsig.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+        assert!( countsig.add_bitsig(&bitsig1).is_ok() );
+        assert!(bitsig1.signature == countsig.signature);
+        assert!(countsig.signers.len() == 1);
+        assert!(bitsig1.messages_and_publickeys().next() == countsig.messages_and_publickeys().next() );
+        assert!( countsig.verify() ); 
         for (i,sig) in sigs1.iter().enumerate().take(3) {
-            assert!( countpop1.add(sig).is_ok() == (i<4));
-            assert!( countpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+            assert!( countsig.add(sig).is_ok() == (i<4));
+            assert!( countsig.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         }
-        assert!( countpop1.add_bitpop(&bitpop1a).is_ok() );
-        assert!( countpop1.add_bitpop(&bitpop1a).is_ok() );
-        assert!( countpop1.add_bitpop(&bitpop2).is_err() );
-        let countpop2 = countpop1.clone();
-        assert!( countpop1.merge(&countpop2).is_ok() );
-        assert!( verifiers::verify_unoptimized(&countpop1) );
-        assert!( verifiers::verify_simple(&countpop1) );
-        assert!( verifiers::verify_with_distinct_messages(&countpop1,false) );
-        countpop1.max_duplicates = 4;
-        assert!( countpop1.merge(&countpop2).is_err() );
+        assert!( countsig.add_bitsig(&bitsig1a).is_ok() );
+        assert!( countsig.add_bitsig(&bitsig1a).is_ok() );
+        assert!( countsig.add_bitsig(&bitsig2).is_err() );
+        let countpop2 = countsig.clone();
+        assert!( countsig.merge(&countpop2).is_ok() );
+        assert!( verifiers::verify_unoptimized(&countsig) );
+        assert!( verifiers::verify_simple(&countsig) );
+        assert!( verifiers::verify_with_distinct_messages(&countsig,false) );
+        countsig.max_duplicates = 4;
+        assert!( countsig.merge(&countpop2).is_err() );
     }
 }
