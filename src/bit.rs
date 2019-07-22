@@ -56,15 +56,15 @@ pub trait SignerTable<E: EngineBLS> {
 }
 
 /// Occupied indices bit mask for `self.signers[offset]`  
-fn chunk_lookups<E,PoP>(proofs_of_possession: &PoP, offset: usize) -> u8 
-where E: EngineBLS, PoP: SignerTable<E>
+fn chunk_lookups<E,ST>(signer_table: &ST, offset: usize) -> u8 
+where E: EngineBLS, ST: SignerTable<E>
 {
     (0..8).into_iter().fold(0u8, |b,j| {
         let i = 8*offset + j;
-        let pk = proofs_of_possession.lookup(i)
+        let pk = signer_table.lookup(i)
             .filter(|pk| {
                 // bb = true always due to check in add_points
-                let bb = Some(i) == proofs_of_possession.find(&pk);
+                let bb = Some(i) == signer_table.find(&pk);
                 debug_assert!(bb , "Incorrect SignerTable implementation with duplicate publickeys" );
                 bb
             });
