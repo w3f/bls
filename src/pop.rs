@@ -288,7 +288,6 @@ impl ::std::error::Error for PoPError {
             RepeatedSigners => "Cannot aggregate due to duplicate signers",
         }
     }
-    fn cause(&self) -> Option<&::std::error::Error> { None }
 }
 
 /// One individual message with attached aggreggate BLS signatures

@@ -49,7 +49,6 @@ impl ::std::error::Error for AttackViaDuplicateMessages {
     fn description(&self) -> &str {
         "Attempted to aggregate duplicate messages." 
     }
-    fn cause(&self) -> Option<&::std::error::Error> { None }
 }
 
 /// Distinct messages with attached BLS signature
