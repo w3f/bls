@@ -93,7 +93,7 @@ where
 
     fn lookup(&self, index: usize) -> Option<PublicKey<E>> {
         self.deref().get(index).cloned()
-        // Checked for duplicates in BitPoPSignedMessage
+        // Checked for duplicates in BitSignedMessage
         // .filter(|publickey| {
         //     Some(index) == self.deref().iter().position(|pk| *pk==publickey);
         //     debug_assert!(b, "Incorrect SignerTable implementation with duplicate publickeys");
@@ -102,7 +102,7 @@ where
     }
     fn find(&self, publickey: &PublicKey<E>) -> Option<usize> {
         self.deref().iter().position(|pk| *pk==*publickey)
-        // Checked for duplicates in BitPoPSignedMessage
+        // Checked for duplicates in BitSignedMessage
         // .filter(|index| {
         //     Some(publickey) == self.deref().get(index);
         //     debug_assert!(b, "Incorrect SignerTable implementation with duplicate publickeys");
@@ -162,20 +162,20 @@ impl ::std::error::Error for SignerTableError {
 /// You must provide a `SignerTable` for this, likely by
 /// implementing it for your own data structures.
 // #[derive(Clone)]
-pub struct BitPoPSignedMessage<E: EngineBLS, POP: SignerTable<E>> {
+pub struct BitSignedMessage<E: EngineBLS, POP: SignerTable<E>> {
     proofs_of_possession: POP,
     signers: <POP as SignerTable<E>>::Signers,
     message: Message,
     signature: Signature<E>,
 }
 
-impl<'a,E,POP> Clone for BitPoPSignedMessage<E,POP>
+impl<'a,E,POP> Clone for BitSignedMessage<E,POP>
 where 
     E: EngineBLS,
     POP: SignerTable<E>+Clone,
 {
-    fn clone(&self) -> BitPoPSignedMessage<E,POP> {
-        BitPoPSignedMessage {
+    fn clone(&self) -> BitSignedMessage<E,POP> {
+        BitSignedMessage {
             proofs_of_possession: self.proofs_of_possession.clone(),
             signers: self.signers.clone(),
             message: self.message,
@@ -184,7 +184,7 @@ where
     }
 }
 
-impl<'a,E,POP> Signed for &'a BitPoPSignedMessage<E,POP> 
+impl<'a,E,POP> Signed for &'a BitSignedMessage<E,POP> 
 where
     E: EngineBLS,
     POP: SignerTable<E>,
@@ -224,15 +224,15 @@ where
     }
 }
 
-impl<E,POP> BitPoPSignedMessage<E,POP> 
+impl<E,POP> BitSignedMessage<E,POP> 
 where
     E: EngineBLS,
     POP: SignerTable<E>,
 {
-    pub fn new(proofs_of_possession: POP, message: Message) -> BitPoPSignedMessage<E,POP> {
+    pub fn new(proofs_of_possession: POP, message: Message) -> BitSignedMessage<E,POP> {
         let signers = proofs_of_possession.new_signers();
         let signature = Signature(E::SignatureGroup::zero());
-        BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
+        BitSignedMessage { proofs_of_possession, signers, message, signature }
     }
 
     fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),SignerTableError> {
@@ -259,9 +259,9 @@ where
         self.add_points(signed.publickey,signed.signature)
     }
 
-    /// Merge two `BitPoPSignedMessage`, after testing for message
+    /// Merge two `BitSignedMessage`, after testing for message
     /// and proofs-of-possession table agreement, and disjoint publickeys.
-    pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),SignerTableError> {
+    pub fn merge(&mut self, other: &BitSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
             return Err(SignerTableError::MismatchedMessage);
         }
@@ -288,14 +288,14 @@ where
 /// and with the singers presented as a compact bitfield.
 ///
 /// We may aggregage any number of duplicate signatures per signer here,
-/// unlike `CountPoPSignedMessage`, but our serialized signature costs
+/// unlike `CountSignedMessage`, but our serialized signature costs
 /// one 96 or or 48 bytes compressed curve point, plus the size of
 /// `SignerTable::Signers` times log of the largest duplicate count.
 ///
 /// You must provide a `SignerTable` for this, perhapos by implementing
 /// it for your own fixed size data structures.
 // #[derive(Clone)]
-pub struct CountPoPSignedMessage<E: EngineBLS, POP: SignerTable<E>> {
+pub struct CountSignedMessage<E: EngineBLS, POP: SignerTable<E>> {
     proofs_of_possession: POP,
     signers: Vec<<POP as SignerTable<E>>::Signers>,
     message: Message,
@@ -305,13 +305,13 @@ pub struct CountPoPSignedMessage<E: EngineBLS, POP: SignerTable<E>> {
     pub max_duplicates: usize,
 }
 
-impl<'a,E,POP> Clone for CountPoPSignedMessage<E,POP>
+impl<'a,E,POP> Clone for CountSignedMessage<E,POP>
 where 
     E: EngineBLS,
     POP: SignerTable<E>+Clone,
 {
-    fn clone(&self) -> CountPoPSignedMessage<E,POP> {
-        CountPoPSignedMessage {
+    fn clone(&self) -> CountSignedMessage<E,POP> {
+        CountSignedMessage {
             proofs_of_possession: self.proofs_of_possession.clone(),
             signers: self.signers.clone(),
             message: self.message,
@@ -321,7 +321,7 @@ where
     }
 }
 
-impl<'a,E,POP> Signed for &'a CountPoPSignedMessage<E,POP> 
+impl<'a,E,POP> Signed for &'a CountSignedMessage<E,POP> 
 where
     E: EngineBLS,
     POP: SignerTable<E>,
@@ -364,16 +364,16 @@ where
     }
 }
 
-impl<E,POP> CountPoPSignedMessage<E,POP> 
+impl<E,POP> CountSignedMessage<E,POP> 
 where
     E: EngineBLS,
     POP: SignerTable<E>,
 {
-    pub fn new(proofs_of_possession: POP, message: Message) -> CountPoPSignedMessage<E,POP> {
+    pub fn new(proofs_of_possession: POP, message: Message) -> CountSignedMessage<E,POP> {
         let signers = vec![proofs_of_possession.new_signers(); 1];
         let signature = Signature(E::SignatureGroup::zero());
         let max_duplicates = 16;
-        CountPoPSignedMessage { proofs_of_possession, signers, message, signature, max_duplicates }
+        CountSignedMessage { proofs_of_possession, signers, message, signature, max_duplicates }
     }
 
     /*
@@ -459,7 +459,7 @@ where
     }
 
 
-    pub fn add_bitpop(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),SignerTableError> {
+    pub fn add_bitpop(&mut self, other: &BitSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
             return Err(SignerTableError::MismatchedMessage);
         }
@@ -487,9 +487,9 @@ where
         Ok(())
     }
 
-    /// Merge two `CountPoPSignedMessage`, after testing for message
+    /// Merge two `CountSignedMessage`, after testing for message
     /// and proofs-of-possession table agreement, and disjoint publickeys.
-    pub fn merge(&mut self, other: &CountPoPSignedMessage<E,POP>) -> Result<(),SignerTableError> {
+    pub fn merge(&mut self, other: &CountSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
             return Err(SignerTableError::MismatchedMessage);
         }
@@ -534,13 +534,13 @@ mod tests {
         keypairs.push(dup);
         let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
 
-        let mut bitpop1 = BitPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        let mut bitpop1 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
         assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         for (i,sig) in sigs1.iter().enumerate().take(2) {
             assert!( bitpop1.add(sig).is_ok() == (i<4));
             assert!( bitpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         }
-        let mut bitpop1a = BitPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        let mut bitpop1a = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
         for (i,sig) in sigs1.iter().enumerate().skip(2) {
             assert!( bitpop1a.add(sig).is_ok() == (i<4));
             assert!( bitpop1a.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
@@ -553,7 +553,7 @@ mod tests {
         // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
 
         let sigs2 = keypairs.iter_mut().map(|k| k.sign(msg2)).collect::<Vec<_>>();  
-        let mut bitpop2 = BitPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
+        let mut bitpop2 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
         for sig in sigs2.iter().take(3) {
             assert!( bitpop2.add(sig).is_ok() );
         }
@@ -583,7 +583,7 @@ mod tests {
         assert!( ! verifiers::verify_with_distinct_messages(&bitpop1,false) );
         */
 
-        let mut countpop1 = CountPoPSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
+        let mut countpop1 = CountSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
         assert!(countpop1.signers.len() == 1);
         assert!( countpop1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
         assert!( countpop1.add_bitpop(&bitpop1).is_ok() );
