@@ -117,7 +117,7 @@ where
 /// permit users to recover from them, although actual recovery sounds
 /// impossible nomrally.
 #[derive(Debug)]
-pub enum PoPError {
+pub enum SignerTableError {
     /// Attempted to use missmatched proof-of-possession tables. 
     BadPoP(&'static str),
     /// Attempted to aggregate distint messages, which requires the 
@@ -128,9 +128,9 @@ pub enum PoPError {
     RepeatedSigners,
 }
 
-impl ::std::fmt::Display for PoPError {
+impl ::std::fmt::Display for SignerTableError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        use self::PoPError::*;
+        use self::SignerTableError::*;
         match self {
             BadPoP(s) => write!(f, "{}", s),
             MismatchedMessage => write!(f, "Cannot aggregate distinct messages with only a bit field."),
@@ -139,9 +139,9 @@ impl ::std::fmt::Display for PoPError {
     }
 }
 
-impl ::std::error::Error for PoPError {
+impl ::std::error::Error for SignerTableError {
     fn description(&self) -> &str {
-        use self::PoPError::*;
+        use self::SignerTableError::*;
         match self {
             BadPoP(s) => s,
             MismatchedMessage => "Cannot aggregate distinct messages with only a bit field.",
@@ -235,15 +235,15 @@ where
         BitPoPSignedMessage { proofs_of_possession, signers, message, signature }
     }
 
-    fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),PoPError> {
+    fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),SignerTableError> {
         let i = self.proofs_of_possession.find(&publickey)
-            .ok_or(PoPError::BadPoP("Mismatched proof-of-possession")) ?;
+            .ok_or(SignerTableError::BadPoP("Mismatched proof-of-possession")) ?;
         if self.proofs_of_possession.lookup(i) != Some(publickey) {
-            return Err(PoPError::BadPoP("Invalid SignerTable implementation with missmatched lookups"));
+            return Err(SignerTableError::BadPoP("Invalid SignerTable implementation with missmatched lookups"));
         }
         let b = 1 << (i % 8);
         let s = &mut self.signers.borrow_mut()[i / 8];
-        if *s & b != 0 { return Err(PoPError::RepeatedSigners); }
+        if *s & b != 0 { return Err(SignerTableError::RepeatedSigners); }
         *s |= b;
         self.signature.0.add_assign(&signature.0);
         Ok(())
@@ -251,27 +251,27 @@ where
 
     /// Include one signed message, after testing for message and
     /// proofs-of-possession table agreement, and disjoint publickeys.
-    pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),PoPError>
+    pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),SignerTableError>
     {
         if self.message != signed.message {
-            return Err(PoPError::MismatchedMessage);
+            return Err(SignerTableError::MismatchedMessage);
         }
         self.add_points(signed.publickey,signed.signature)
     }
 
     /// Merge two `BitPoPSignedMessage`, after testing for message
     /// and proofs-of-possession table agreement, and disjoint publickeys.
-    pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),PoPError> {
+    pub fn merge(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
-            return Err(PoPError::MismatchedMessage);
+            return Err(SignerTableError::MismatchedMessage);
         }
         if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
-            return Err(PoPError::BadPoP("Mismatched proof-of-possession"));
+            return Err(SignerTableError::BadPoP("Mismatched proof-of-possession"));
         }
         for (offset,(x,y)) in self.signers.borrow().iter().zip(other.signers.borrow()).enumerate() {
-            if *x & *y != 0 { return Err(PoPError::RepeatedSigners); }
+            if *x & *y != 0 { return Err(SignerTableError::RepeatedSigners); }
             if *y & ! chunk_lookups(&self.proofs_of_possession, offset) != 0 {
-                return Err(PoPError::BadPoP("Absent signer"));
+                return Err(SignerTableError::BadPoP("Absent signer"));
             }
         }
         for (x,y) in self.signers.borrow_mut().iter_mut().zip(other.signers.borrow()) {
@@ -377,8 +377,8 @@ where
     }
 
     /*
-    fn check_one_lookup(&self, index: usize) -> Result<(),PoPError> {
-        let e = PoPError::BadPoP("Invalid SignerTable implementation with missmatched lookups");
+    fn check_one_lookup(&self, index: usize) -> Result<(),SignerTableError> {
+        let e = SignerTableError::BadPoP("Invalid SignerTable implementation with missmatched lookups");
         self.proofs_of_possession.lookup(index).filter(|pk| {
             Some(index) == self.proofs_of_possession.find(&pk)
         }).map(|_| ()).ok_or(e)
@@ -401,9 +401,9 @@ where
         self.signers.truncate(c)
     }
 
-    fn test_count(&self, count: usize) -> Result<(),PoPError> {
+    fn test_count(&self, count: usize) -> Result<(),SignerTableError> {
         if count >= self.max_duplicates || count >= usize::max_value() {
-            return Err(PoPError::RepeatedSigners);
+            return Err(SignerTableError::RepeatedSigners);
         }
         Ok(())
     }
@@ -435,11 +435,11 @@ where
     }
 
 
-    fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),PoPError> {
+    fn add_points(&mut self, publickey: PublicKey<E>, signature: Signature<E>) -> Result<(),SignerTableError> {
         let i = self.proofs_of_possession.find(&publickey)
-            .ok_or(PoPError::BadPoP("Mismatched proof-of-possession")) ?;
+            .ok_or(SignerTableError::BadPoP("Mismatched proof-of-possession")) ?;
         if self.proofs_of_possession.lookup(i) != Some(publickey) {
-            return Err(PoPError::BadPoP("Invalid SignerTable implementation with missmatched lookups"));
+            return Err(SignerTableError::BadPoP("Invalid SignerTable implementation with missmatched lookups"));
         }
         let count = self.get_count(i) + 1;
         self.test_count(count) ?;
@@ -450,28 +450,28 @@ where
 
     /// Include one signed message, after testing for message and
     /// proofs-of-possession table agreement, and disjoint publickeys.
-    pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),PoPError>
+    pub fn add(&mut self, signed: &SignedMessage<E>) -> Result<(),SignerTableError>
     {
         if self.message != signed.message {
-            return Err(PoPError::MismatchedMessage);
+            return Err(SignerTableError::MismatchedMessage);
         }
         self.add_points(signed.publickey,signed.signature)
     }
 
 
-    pub fn add_bitpop(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),PoPError> {
+    pub fn add_bitpop(&mut self, other: &BitPoPSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
-            return Err(PoPError::MismatchedMessage);
+            return Err(SignerTableError::MismatchedMessage);
         }
         if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
-            return Err(PoPError::BadPoP("Mismatched proof-of-possession"));
+            return Err(SignerTableError::BadPoP("Mismatched proof-of-possession"));
         }
         let os = other.signers.borrow();
         for offset in 0..self.signers[0].borrow().len() {
             if self.signers.iter().fold(os[offset], |b,s| b | s.borrow()[offset]) 
                 & ! chunk_lookups(&self.proofs_of_possession, offset) != 0u8 
             {
-                return Err(PoPError::BadPoP("Absent signer"));
+                return Err(SignerTableError::BadPoP("Absent signer"));
             }
             for j in 0..8 {
                 let mut count = self.get_count(8*offset+j);
@@ -489,18 +489,18 @@ where
 
     /// Merge two `CountPoPSignedMessage`, after testing for message
     /// and proofs-of-possession table agreement, and disjoint publickeys.
-    pub fn merge(&mut self, other: &CountPoPSignedMessage<E,POP>) -> Result<(),PoPError> {
+    pub fn merge(&mut self, other: &CountPoPSignedMessage<E,POP>) -> Result<(),SignerTableError> {
         if self.message != other.message {
-            return Err(PoPError::MismatchedMessage);
+            return Err(SignerTableError::MismatchedMessage);
         }
         if ! self.proofs_of_possession.agreement(&other.proofs_of_possession) {
-            return Err(PoPError::BadPoP("Mismatched proof-of-possession"));
+            return Err(SignerTableError::BadPoP("Mismatched proof-of-possession"));
         }
         for offset in 0..self.signers[0].borrow().len() {
             if self.signers.iter().chain(&other.signers).fold(0u8, |b,s| b | s.borrow()[offset])
                & ! chunk_lookups(&self.proofs_of_possession, offset) != 0u8
             {
-                return Err(PoPError::BadPoP("Absent signer"));
+                return Err(SignerTableError::BadPoP("Absent signer"));
             }
             for j in 0..8 {
                 let index = 8*offset+j;
