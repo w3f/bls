@@ -49,7 +49,7 @@ impl<E: EngineBLS> Clone for SecretKeyVT<E> {
 
 // TODO: Serialization
 
-impl<E: EngineBLS> SecretKeyVT<E> {
+impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     /// Convert our secret key to its representation type, which
     /// satisfies both `AsRef<[u64]>` and `ff::PrimeFieldRepr`.
     /// We suggest `ff::PrimeFieldRepr::write_le` for serialization,
@@ -78,7 +78,9 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )
     }
+}
 
+impl<E: EngineBLS> SecretKeyVT<E> {
     /// Sign without side channel protections from key mutation.
     pub fn sign(&self, message: Message) -> Signature<E> {
         let mut s = message.hash_to_signature_curve::<E>();
@@ -175,21 +177,7 @@ impl<E: EngineBLS> Clone for SecretKey<E> {
 
 // TODO: Serialization
 
-impl<E: EngineBLS> SecretKey<E> {
-    /// Initialize the signature curve signed point mutation.
-    ///
-    /// Amortized over many signings involing this once costs
-    /// nothing, but each individual invokation costs as much
-    /// as signing.
-    pub fn init_point_mutation<R: Rng>(&mut self, mut rng: R) {
-        let mut s = rng.gen::<E::SignatureGroup>();
-        self.old_unsigned = s;
-        self.old_signed = s;
-        self.old_signed.mul_assign(self.key[0]);
-        s.mul_assign(self.key[1]);
-        self.old_signed.add_assign(&s);
-    }
-
+impl<E: EngineBLS> SecretKey<E> where E: UnmutatedKeys {
     /// Generate a secret key that is already split for side channel protection,
     /// but does not apply signed point mutation.
     pub fn generate_dirty<R: Rng>(mut rng: R) -> Self {
@@ -205,6 +193,22 @@ impl<E: EngineBLS> SecretKey<E> {
         let mut s = Self::generate_dirty(&mut rng);
         s.init_point_mutation(rng);
         s
+    }
+}
+
+impl<E: EngineBLS> SecretKey<E> {
+    /// Initialize the signature curve signed point mutation.
+    ///
+    /// Amortized over many signings involing this once costs
+    /// nothing, but each individual invokation costs as much
+    /// as signing.
+    pub fn init_point_mutation<R: Rng>(&mut self, mut rng: R) {
+        let mut s = rng.gen::<E::SignatureGroup>();
+        self.old_unsigned = s;
+        self.old_signed = s;
+        self.old_signed.mul_assign(self.key[0]);
+        s.mul_assign(self.key[1]);
+        self.old_signed.add_assign(&s);
     }
 
     /// Create a representative usable for operations lacking 
@@ -334,7 +338,7 @@ fn serde_error_from_group_decoding_error(err: GroupDecodingError) -> ::serde::de
 macro_rules! compression {
     ($wrapper:tt,$group:tt) => {
 
-impl<E: EngineBLS> $wrapper<E> {
+impl<E> $wrapper<E> where E: EngineBLS+UnmutatedKeys {
     /// Convert our signature or public key type to its compressed form.
     ///
     /// These compressed forms are wraper types on either a `[u8; 48]` 
@@ -366,14 +370,14 @@ impl<E: EngineBLS> $wrapper<E> {
 }
 
 #[cfg(feature = "serde")]
-impl<E: EngineBLS> ::serde::Serialize for $wrapper<E> {
+impl<E> ::serde::Serialize for $wrapper<E> where E: EngineBLS+UnmutatedKeys {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: ::serde::Serializer {
         serializer.serialize_bytes(self.compress().as_ref())
     }
 }
 
 #[cfg(feature = "serde")]
-impl<'a,E: EngineBLS> ::serde::Deserialize<'d> for $wrapper<E> {
+impl<'a,E> ::serde::Deserialize<'d> for $wrapper<E> where E: EngineBLS+UnmutatedKeys {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
         struct MyVisitor;
 
@@ -453,6 +457,12 @@ impl<E: EngineBLS> Signature<E> {
 pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // TODO: Serialization
 
+impl<E: EngineBLS> PublicKey<E> where E: DeserializePublicKey {
+    pub fn i_understand_and_checked_this_proof_of_possession(self) -> PublicKey<PoP<E>> {
+        PublicKey(self.0)
+    }
+}
+
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
 compression!(PublicKey,PublicKeyGroup);
@@ -488,14 +498,16 @@ impl<E: EngineBLS> Clone for KeypairVT<E> {
 
 // TODO: Serialization
 
-impl<E: EngineBLS> KeypairVT<E> {
+impl<E: EngineBLS> KeypairVT<E> where E: UnmutatedKeys {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
         let secret = SecretKeyVT::generate(rng);
         let public = secret.into_public();
         KeypairVT { secret, public }
     }
+}
 
+impl<E: EngineBLS> KeypairVT<E> {
     /// Convert into a `SecretKey` applying side channel protections.
     pub fn into_split<R: Rng>(&self, rng: R) -> Keypair<E> {
         let secret = self.secret.into_split(rng);
@@ -536,14 +548,16 @@ impl<E: EngineBLS> Clone for Keypair<E> {
 
 // TODO: Serialization
 
-impl<E: EngineBLS> Keypair<E> {
+impl<E: EngineBLS> Keypair<E> where E: UnmutatedKeys {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
         let secret = SecretKey::generate(rng);
         let public = secret.into_public();
         Keypair { secret, public }
     }
+}
 
+impl<E: EngineBLS> Keypair<E> {
     /// Create a representative usable for operations lacking 
     /// side channel protections.  
     pub fn into_vartime(&self) -> KeypairVT<E> {

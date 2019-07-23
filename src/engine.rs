@@ -39,8 +39,6 @@ use rand::{Rand, Rng};
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
 pub trait EngineBLS {
-    const LINEAR: bool = false;
-
     type Engine: Engine + ScalarEngine<Fr = Self::Scalar>;
     type Scalar: PrimeField + SqrtField; // = <Self::Engine as ScalarEngine>::Fr;
 
@@ -216,13 +214,23 @@ impl<E: Engine> EngineBLS for TinyBLS<E> {
 }
 
 
+pub trait UnmutatedKeys : EngineBLS {}
+
+impl<E: Engine> UnmutatedKeys for TinyBLS<E> {}
+impl<E: Engine> UnmutatedKeys for UsualBLS<E> {}
+impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
+
+pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
+
+impl<E: Engine> DeserializePublicKey for TinyBLS<E> {}
+impl<E: Engine> DeserializePublicKey for UsualBLS<E> {}
+
+
 /// Rogue key attack defence by proof-of-possession
 #[derive(Default)]
 pub struct PoP<E>(pub E);
 
 impl<E: EngineBLS> EngineBLS for PoP<E> {
-    const LINEAR: bool = true;
-
     type Engine = E::Engine;
     type Scalar = <Self::Engine as ScalarEngine>::Fr;
     type PublicKeyGroup = E::PublicKeyGroup;
