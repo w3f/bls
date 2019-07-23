@@ -38,8 +38,11 @@
 use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
+use pairing::{CurveProjective}; // CurveAffine, Engine
+
 use super::*;
 use super::verifiers::verify_with_distinct_messages;
+
 
 /// Batch or aggregate BLS signatures with attached messages and
 /// signers, for whom we previously checked proofs-of-possession.

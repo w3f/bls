@@ -96,9 +96,6 @@ extern crate sha3;
 
 use std::borrow::Borrow;
 
-use ff::{ScalarEngine}; // Field, PrimeField, SqrtField, PrimeFieldDecodingError, PrimeFieldRepr
-use pairing::{CurveAffine, CurveProjective, Engine};
-
 
 pub mod engine;
 pub mod single;
@@ -110,6 +107,7 @@ pub mod verifiers;
 // pub mod delinear;
 
 pub use engine::*;
+
 pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
 pub use bit::{BitSignedMessage,CountSignedMessage};
 
@@ -148,38 +146,6 @@ impl Message {
 
 impl<'a> From<&'a [u8]> for Message {
     fn from(x: &[u8]) -> Message { Message::new(b"",x) }     
-}
-
-
-
-/// Rogue key attack defence by proof-of-possession
-#[derive(Default)]
-pub struct PoP<E>(pub E);
-
-
-impl<E: EngineBLS> EngineBLS for PoP<E> {
-    type Engine = E::Engine;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
-    type PublicKeyGroup = E::PublicKeyGroup;
-    type SignatureGroup = E::SignatureGroup;
-
-    fn miller_loop<'a,I>(i: I) -> <Self::Engine as Engine>::Fqk
-    where
-        I: IntoIterator<Item = (
-            &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
-            &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
-        )>,
-    {
-        E::miller_loop(i)
-    }
-
-    fn pairing<G1,G2>(p: G1, q: G2) -> <E::Engine as Engine>::Fqk
-    where
-        G1: Into<<Self::PublicKeyGroup as CurveProjective>::Affine>,
-        G2: Into<<Self::SignatureGroup as CurveProjective>::Affine>,
-    {
-        E::pairing(p,q)
-    }
 }
 
 

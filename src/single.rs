@@ -73,7 +73,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
         repr.read_le(reader) ?;
         Ok(repr)
     }
-    
+
     /// Generate a secret key without side channel protections.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )

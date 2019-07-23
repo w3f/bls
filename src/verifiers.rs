@@ -11,6 +11,24 @@ use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, Sqrt
 
 use super::*;
 
+
+// We define these convenience type alias here instead of engine.rs 
+// because seemingly only verifier implementations really employ them.
+// And we `pub use engine::*` in lib.rs.
+
+/// Convenience type alias for projective form of `PublicKeyGroup`
+pub type PublicKeyProjective<E> = <E as EngineBLS>::PublicKeyGroup;
+
+/// Convenience type alias for affine form of `PublicKeyGroup`
+pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine;
+
+/// Convenience type alias for projective form of `SignatureGroup`
+pub type SignatureProjective<E> = <E as EngineBLS>::SignatureGroup;
+
+/// Convenience type alias for affine form of `SignatureGroup`
+pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveProjective>::Affine;
+
+
 /// Simple unoptimized BLS signature verification.  Useful for testing.
 pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
     let signature = s.signature().0.into_affine().prepare();

@@ -1,4 +1,20 @@
+//! ## Adaptation of `pairing::Engine` to BLS-like signatures.
+//!
+//! We provide an `EngineBLS` trait that adapts `pairing::Engine`
+//! to BLS-like signatures by permitting the group roles to be
+//! transposed, which involves removing the field of definition, 
+//! while retaining the correct associations.  
 //! 
+//! We support same-message aggregation strategies using wrappers
+//! that satisfy `EngineBLS` as well, primarily because these
+//! strategies must ocntroll access to the public key type.
+//!
+//! In future, we should support [Pixel](https://github.com/w3f/bls/issues/4)
+//! by adding wrapper that replace `SignatureGroup` with a product
+//! of both groups.  I think this requires abstracting `CruveAffine`
+//! and `CruveProjective` without their base fields and wNAF windows,
+//! but still with their affine, projective, and compressed forms,
+//! and batch normalization. 
 
 
 use std::borrow::Borrow;
@@ -23,6 +39,8 @@ use rand::{Rand, Rng};
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
 pub trait EngineBLS {
+    const LINEAR: bool = false;
+
     type Engine: Engine + ScalarEngine<Fr = Self::Scalar>;
     type Scalar: PrimeField + SqrtField; // = <Self::Engine as ScalarEngine>::Fr;
 
@@ -110,15 +128,6 @@ pub trait EngineBLS {
 }
 
 
-pub type PublicKeyProjective<E> = <E as EngineBLS>::PublicKeyGroup;
-pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine;
-
-pub type SignatureProjective<E> = <E as EngineBLS>::SignatureGroup;
-pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveProjective>::Affine;
-
-
-
-
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 pub type ZBLS = UsualBLS<::pairing::bls12_381::Bls12>;
 
@@ -203,6 +212,38 @@ impl<E: Engine> EngineBLS for TinyBLS<E> {
         G2: Into<E::G2Affine>,
     {
         E::pairing(q,p)
+    }
+}
+
+
+/// Rogue key attack defence by proof-of-possession
+#[derive(Default)]
+pub struct PoP<E>(pub E);
+
+impl<E: EngineBLS> EngineBLS for PoP<E> {
+    const LINEAR: bool = true;
+
+    type Engine = E::Engine;
+    type Scalar = <Self::Engine as ScalarEngine>::Fr;
+    type PublicKeyGroup = E::PublicKeyGroup;
+    type SignatureGroup = E::SignatureGroup;
+
+    fn miller_loop<'a,I>(i: I) -> <Self::Engine as Engine>::Fqk
+    where
+        I: IntoIterator<Item = (
+            &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
+            &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
+        )>,
+    {
+        E::miller_loop(i)
+    }
+
+    fn pairing<G1,G2>(p: G1, q: G2) -> <E::Engine as Engine>::Fqk
+    where
+        G1: Into<<Self::PublicKeyGroup as CurveProjective>::Affine>,
+        G2: Into<<Self::SignatureGroup as CurveProjective>::Affine>,
+    {
+        E::pairing(p,q)
     }
 }
 
