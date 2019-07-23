@@ -214,18 +214,6 @@ impl<E: Engine> EngineBLS for TinyBLS<E> {
 }
 
 
-pub trait UnmutatedKeys : EngineBLS {}
-
-impl<E: Engine> UnmutatedKeys for TinyBLS<E> {}
-impl<E: Engine> UnmutatedKeys for UsualBLS<E> {}
-impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
-
-pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
-
-impl<E: Engine> DeserializePublicKey for TinyBLS<E> {}
-impl<E: Engine> DeserializePublicKey for UsualBLS<E> {}
-
-
 /// Rogue key attack defence by proof-of-possession
 #[derive(Default)]
 pub struct PoP<E>(pub E);
@@ -254,4 +242,27 @@ impl<E: EngineBLS> EngineBLS for PoP<E> {
         E::pairing(p,q)
     }
 }
+
+
+/// Any `EngineBLS` whose keys remain unmutated.
+///
+/// We mutate delinearized public keys when loading them, so they
+/// cannot be serialized or deserialized directly.  Instead, you
+/// should interact with the keys using the base `EngineBLS` and call
+/// `delinearize` before signing or verifying.
+pub trait UnmutatedKeys : EngineBLS {}
+
+impl<E: Engine> UnmutatedKeys for TinyBLS<E> {}
+impl<E: Engine> UnmutatedKeys for UsualBLS<E> {}
+impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
+
+/// Any `EngineBLS` whose keys can be trivially deserlialized.
+/// 
+/// We disallow deserlialization for proof-of-possession, so that
+/// developers must call `i_have_checked_this_proof_of_possession`.
+pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
+
+impl<E: Engine> DeserializePublicKey for TinyBLS<E> {}
+impl<E: Engine> DeserializePublicKey for UsualBLS<E> {}
+
 

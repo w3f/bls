@@ -94,6 +94,10 @@ extern crate paired as pairing;
 extern crate rand;
 extern crate sha3;
 
+#[cfg(feature = "serde")]
+extern crate serde;
+
+
 use std::borrow::Borrow;
 
 

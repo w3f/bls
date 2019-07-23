@@ -320,25 +320,25 @@ impl <E: EngineBLS> Eq for $wrapper<E> {}
 }  // macro_rules!
 
 #[cfg(feature = "serde")]
-fn serde_error_from_group_decoding_error(err: GroupDecodingError) -> ::serde::de::Error {
+fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDecodingError) -> ERR {
     match err {
         GroupDecodingError::NotOnCurve
-            => E::custom("Point not on curve"),
+            => ERR::custom("Point not on curve"),
         GroupDecodingError::NotInSubgroup
-            => E::custom("Point not in prime order subgroup"),
+            => ERR::custom("Point not in prime order subgroup"),
         GroupDecodingError::CoordinateDecodingError(_s, _pfde)  // Ignore PrimeFieldDecodingError
-            => E::custom("Coordinate decoding error"),
+            => ERR::custom("Coordinate decoding error"),
         GroupDecodingError::UnexpectedCompressionMode
-            => E::custom("Unexpected compression mode"),
+            => ERR::custom("Unexpected compression mode"),
         GroupDecodingError::UnexpectedInformation
-            => E::custom("Invalid length or other unexpected information"),
+            => ERR::custom("Invalid length or other unexpected information"),
     }
 }
 
 macro_rules! compression {
-    ($wrapper:tt,$group:tt) => {
+    ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
-impl<E> $wrapper<E> where E: EngineBLS+UnmutatedKeys {
+impl<E> $wrapper<E> where E: $se {
     /// Convert our signature or public key type to its compressed form.
     ///
     /// These compressed forms are wraper types on either a `[u8; 48]` 
@@ -347,7 +347,9 @@ impl<E> $wrapper<E> where E: EngineBLS+UnmutatedKeys {
     pub fn compress(&self) -> <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed {
         self.0.into_affine().into_compressed()
     }
+}
 
+impl<E> $wrapper<E> where E: $de {
     /// Decompress our signature or public key type from its compressed form.
     ///
     /// These compressed forms are wraper types on either a `[u8; 48]` 
@@ -370,30 +372,33 @@ impl<E> $wrapper<E> where E: EngineBLS+UnmutatedKeys {
 }
 
 #[cfg(feature = "serde")]
-impl<E> ::serde::Serialize for $wrapper<E> where E: EngineBLS+UnmutatedKeys {
+impl<E> ::serde::Serialize for $wrapper<E> where E: $se {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: ::serde::Serializer {
         serializer.serialize_bytes(self.compress().as_ref())
     }
 }
 
 #[cfg(feature = "serde")]
-impl<'a,E> ::serde::Deserialize<'d> for $wrapper<E> where E: EngineBLS+UnmutatedKeys {
+impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
-        struct MyVisitor;
+        use std::fmt;
+        use std::marker::PhantomData;
 
-        impl<'d> ::serde::de::Visitor<'d> for MyVisitor {
-            type Value = $wrapper<E>;
+        struct MyVisitor<EE: $de>(PhantomData<EE>);
 
-            fn expecting(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        impl<'d,EE: $de> ::serde::de::Visitor<'d> for MyVisitor<EE> {
+            type Value = $wrapper<EE>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str(Self::Value::DESCRIPTION)
             }
 
-            fn visit_bytes<E>(self, bytes: &[u8]) -> Result<$wrapper<E>, E> where E: ::serde::de::Error {
-                $wrapper::<E>::decompress_from_slice(bytes)
-                .map_err(serde_error_from_signature_error)
+            fn visit_bytes<ERR>(self, bytes: &[u8]) -> Result<$wrapper<EE>, ERR> where ERR: ::serde::de::Error {
+                $wrapper::<EE>::decompress_from_slice(bytes)
+                .map_err(serde_error_from_group_decoding_error)
             }
         }
-        deserializer.deserialize_bytes(MyVisitor)
+        deserializer.deserialize_bytes(MyVisitor(PhantomData))
     }
 }
 
@@ -429,11 +434,13 @@ pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
-compression!(Signature,SignatureGroup);
+compression!(Signature,SignatureGroup,EngineBLS,EngineBLS);
 zbls_serialization!(Signature,UsualBLS,96);
 zbls_serialization!(Signature,TinyBLS,48);
 
 impl<E: EngineBLS> Signature<E> {
+    const DESCRIPTION : &'static str = "A BLS signature";
+
     /// Verify a single BLS signature
     pub fn verify(&self, message: Message, publickey: &PublicKey<E>) -> bool {
         let publickey = publickey.0.into_affine().prepare();
@@ -458,18 +465,20 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // TODO: Serialization
 
 impl<E: EngineBLS> PublicKey<E> where E: DeserializePublicKey {
-    pub fn i_understand_and_checked_this_proof_of_possession(self) -> PublicKey<PoP<E>> {
+    pub fn i_have_checked_this_proof_of_possession(self) -> PublicKey<PoP<E>> {
         PublicKey(self.0)
     }
 }
 
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
-compression!(PublicKey,PublicKeyGroup);
+compression!(PublicKey,PublicKeyGroup,UnmutatedKeys,DeserializePublicKey);
 zbls_serialization!(PublicKey,UsualBLS,48);
 zbls_serialization!(PublicKey,TinyBLS,96);
 
 impl<E: EngineBLS> PublicKey<E> {
+    const DESCRIPTION : &'static str = "A BLS signature";
+
     pub fn verify(&self, message: Message, signature: &Signature<E>) -> bool {
         signature.verify(message,self)
     }
