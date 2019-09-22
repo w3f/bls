@@ -17,7 +17,8 @@
 //! and batch normalization. 
 
 
-use std::borrow::Borrow;
+use std::borrow::{Borrow,Cow};
+use std::ops::Deref;
 
 use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
 use pairing::{CurveAffine, CurveProjective, Engine};
@@ -115,13 +116,20 @@ pub trait EngineBLS {
             &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
         )>
     {
-        // Use a polymorphic static or const if we ever get either. 
-        let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
-        g1_minus_generator.negate();
+        let g1 = Self::public_key_minus_generator_prepared();
         Self::final_exponentiation( & Self::miller_loop(
             inputs.into_iter().map(|t| t)  // reborrow hack
-                .chain(::std::iter::once( (& g1_minus_generator.prepare(), signature) ))
+                .chain(::std::iter::once( (g1.deref(), signature) ))
         ) ).unwrap() == <Self::Engine as Engine>::Fqk::one()
+    }
+
+    /// Prepared negative of the generator of the public key curve.
+    fn public_key_minus_generator_prepared()
+     -> Cow<'static, <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared >
+    {
+         let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
+         g1_minus_generator.negate();
+         Cow::Owned( g1_minus_generator.prepare() )
     }
 }
 
@@ -169,6 +177,39 @@ impl<E: Engine> EngineBLS for UsualBLS<E> {
         G2: Into<E::G2Affine>,
     {
         E::pairing(p,q)
+    }
+
+    /// Prepared negative of the generator of the public key curve.
+    ///
+    /// We assume reuse the same few curves aka `pairing::Engine`s,
+    /// so we `Box::leak` the prepared point to return the same `'static`
+    /// reference each time, and relocate these with linear search.
+    fn public_key_minus_generator_prepared()
+     -> Cow<'static, <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared >
+    {
+        use std::sync::{Once,Mutex};
+        use std::any::{Any,TypeId};
+
+        static mut CALLED: Option<Mutex<Vec<&'static (dyn Any + Send + Sync + 'static)>>> = None;
+
+        // Remove if Mutex::new ever becomes const fn
+        static START: Once = Once::new();
+        START.call_once(|| unsafe { CALLED = Some(Default::default()); });
+
+        let v : Option<&'static Mutex<Vec<_>>> = unsafe { CALLED.as_ref() };
+        let mut v = v.unwrap().lock().unwrap();
+
+        for g1 in v.deref() {
+            if let Some(g1_ref) = g1.downcast_ref() { return Cow::Borrowed( g1_ref ); }
+        }
+
+        let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
+        g1_minus_generator.negate();
+        let g1 = Box::new( g1_minus_generator.prepare() );
+        let g1: &'static <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared
+         = Box::<_>::leak(g1);
+        v.push(g1 as &'static (dyn Any + Send + Sync + 'static));
+        Cow::Borrowed( g1 )
     }
 }
 
