@@ -82,7 +82,7 @@
 
 
 // #![feature(generic_associated_types)]
-#![feature(associated_type_defaults)]
+// #![feature(associated_type_defaults)]
 
 #[macro_use]
 extern crate arrayref;
@@ -170,8 +170,8 @@ pub trait Signed: Sized {
     /// Return the aggregated signature 
     fn signature(&self) -> Signature<Self::E>;
 
-    type M: Borrow<Message> = Message;
-    type PKG: Borrow<PublicKey<Self::E>> = PublicKey<Self::E>;
+    type M: Borrow<Message>;
+    type PKG: Borrow<PublicKey<Self::E>>;
 
     /// Iterator over messages and public key reference pairs.
     type PKnM: Iterator<Item = (Self::M,Self::PKG)> + ExactSizeIterator;

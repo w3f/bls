@@ -24,7 +24,7 @@
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
 use ff::{Field, PrimeField, PrimeFieldRepr, PrimeFieldDecodingError}; // ScalarEngine, SqrtField
-use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
+use pairing::{EncodedPoint, GroupDecodingError, CurveAffine, CurveProjective};  // Engine, PrimeField, SqrtField
 use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 // use rand_chacha::ChaChaRng;
@@ -338,7 +338,7 @@ fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDeco
 macro_rules! compression {
     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
-impl<E> $wrapper<E> where E: $se {
+impl<E> $wrapper<E> where E: $se, <E as EngineBLS>::$group: CurveProjective {
     /// Convert our signature or public key type to its compressed form.
     ///
     /// These compressed forms are wraper types on either a `[u8; 48]` 
@@ -349,7 +349,7 @@ impl<E> $wrapper<E> where E: $se {
     }
 }
 
-impl<E> $wrapper<E> where E: $de {
+impl<E> $wrapper<E> where E: $de, <E as EngineBLS>::$group: CurveProjective {
     /// Decompress our signature or public key type from its compressed form.
     ///
     /// These compressed forms are wraper types on either a `[u8; 48]` 
@@ -439,6 +439,7 @@ zbls_serialization!(Signature,UsualBLS,96);
 zbls_serialization!(Signature,TinyBLS,48);
 
 impl<E: EngineBLS> Signature<E> {
+	#[cfg(feature = "serde")]
     const DESCRIPTION : &'static str = "A BLS signature";
 
     /// Verify a single BLS signature
@@ -477,6 +478,7 @@ zbls_serialization!(PublicKey,UsualBLS,48);
 zbls_serialization!(PublicKey,TinyBLS,96);
 
 impl<E: EngineBLS> PublicKey<E> {
+	#[cfg(feature = "serde")]
     const DESCRIPTION : &'static str = "A BLS signature";
 
     pub fn verify(&self, message: Message, signature: &Signature<E>) -> bool {

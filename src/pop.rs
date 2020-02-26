@@ -38,7 +38,7 @@
 use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+use pairing::CurveProjective as _;
 
 use super::*;
 use super::verifiers::verify_with_distinct_messages;

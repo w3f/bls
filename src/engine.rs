@@ -188,7 +188,7 @@ impl<E: Engine> EngineBLS for UsualBLS<E> {
      -> Cow<'static, <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared >
     {
         use std::sync::{Once,Mutex};
-        use std::any::{Any,TypeId};
+        use std::any::Any;
 
         static mut CALLED: Option<Mutex<Vec<&'static (dyn Any + Send + Sync + 'static)>>> = None;
 

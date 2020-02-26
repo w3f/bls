@@ -7,7 +7,7 @@
 use std::borrow::{Borrow,BorrowMut};
 use std::iter::{once};  // FromIterator
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+use crate::pairing::CurveProjective as _;
 
 use super::*;
 use super::single::SignedMessage;
@@ -397,6 +397,7 @@ where
         }
     }
 
+	#[cfg(any())]
     fn trim(&mut self) {
         let empty = |s: &POP::Signers| s.borrow().iter().all(|b| *b == 0u8);
         let c = self.signers.len() - self.signers.iter().rev().take_while(|s| empty(&*s)).count();
