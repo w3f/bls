@@ -82,7 +82,7 @@
 
 
 // #![feature(generic_associated_types)]
-// #![feature(associated_type_defaults)]
+#![feature(associated_type_defaults)]
 
 #[macro_use]
 extern crate arrayref;
@@ -90,16 +90,16 @@ extern crate arrayref;
 // #[macro_use]
 extern crate ff;
 
-extern crate paired as pairing;
+extern crate pairing;
+
 extern crate rand;
 extern crate sha3;
+extern crate digest;
 
 #[cfg(feature = "serde")]
 extern crate serde;
 
-
 use std::borrow::Borrow;
-
 
 pub mod engine;
 pub mod single;
@@ -109,6 +109,7 @@ pub mod bit;
 pub mod delinear;
 pub mod verifiers;
 // pub mod delinear;
+pub mod bls_pop;
 
 pub use engine::*;
 
@@ -152,8 +153,6 @@ impl<'a> From<&'a [u8]> for Message {
     fn from(x: &[u8]) -> Message { Message::new(b"",x) }     
 }
 
-
-
 /// Representation of an aggregated BLS signature.
 ///
 /// We implement this trait only for borrows of appropriate structs
@@ -173,7 +172,7 @@ pub trait Signed: Sized {
     type M: Borrow<Message>; // = Message;
     type PKG: Borrow<PublicKey<Self::E>>; // = PublicKey<Self::E>;
 
-    /// Iterator over messages and public key reference pairs.
+    /// Iterator over, messages and public key reference pairs.
     type PKnM: Iterator<Item = (Self::M,Self::PKG)> + ExactSizeIterator;
     // type PKnM<'a>: Iterator<Item = (
     //    &'a <<Self as Signed<'a>>::E as EngineBLS>::PublicKeyGroup,

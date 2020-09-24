@@ -23,8 +23,9 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ff::{Field, PrimeField, PrimeFieldRepr, PrimeFieldDecodingError}; // ScalarEngine, SqrtField
-use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
+use ff::{Field, PrimeField};
+
+use pairing::{PairingCurveAffine};  // Engine, PrimeField, SqrtField
 use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 // use rand_chacha::ChaChaRng;
@@ -35,7 +36,6 @@ use std::iter::once;
 use std::io;
 
 use super::*;
-
 
 // //////////////// SECRETS //////////////// //
 
@@ -65,7 +65,7 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     /// satisfies `Default`, `AsMut<[u64]>`, and `ff::PrimeFieldRepr`.
     /// We suggest `ff::PrimeFieldRepr::read_le` for deserialization,
     /// invoked via our `read` method, which requires a seperate call.
-    pub fn from_repr(repr: <E::Scalar as PrimeField>::Repr) -> Result<Self,PrimeFieldDecodingError> {
+    pub fn from_repr(repr: <E::Scalar as PrimeField>::Repr) -> Option<Self> {
         Ok(SecretKeyVT(<E::Scalar as PrimeField>::from_repr(repr) ?))
     }
     pub fn read<R: io::Read>(reader: R) -> io::Result<<E::Scalar as PrimeField>::Repr> {

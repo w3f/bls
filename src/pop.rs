@@ -34,11 +34,12 @@
 // Aside about proof-of-possession in the DLOG setting
 // https://twitter.com/btcVeg/status/1085490561082183681
 
+use digest::Digest;
 
 use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+//use pairing::{CurveProjective}; // CurveAffine, Engine
 
 use super::*;
 use super::verifiers::verify_with_distinct_messages;
@@ -80,6 +81,19 @@ use super::verifiers::verify_with_distinct_messages;
 // but this sounds complex or worse fragile.
 //
 // TODO: Implement gaussian elimination verification scheme.
+
+use single::PublicKey;
+/// ProofOfPossion trait which provides 
+pub trait ProofOfPossession<E: EngineBLS, H: Digest> {
+    type PublicKey = PublicKey<E>;
+    type SchnorrProof = (E::Scalar, E::Scalar);
+
+    fn sign_pok(&self, secret_key: E::Scalar, public_key: PublicKey<E>) -> Self::SchnorrProof;
+
+    fn verify_pok(&self) -> bool;
+
+}
+
 #[derive(Clone)]
 pub struct BatchAssumingProofsOfPossession<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,

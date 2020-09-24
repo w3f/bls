@@ -20,10 +20,9 @@
 use std::borrow::{Borrow,Cow};
 use std::ops::Deref;
 
-use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
-use pairing::{CurveAffine, CurveProjective, Engine};
+use ff::{Field, PrimeField};
+use pairing::{PairingCurveAffine, Engine};
 use rand::{Rand, Rng};
-
 
 /// A weakening of `pairing::Engine` to permit transposing the groups.
 ///
@@ -40,8 +39,8 @@ use rand::{Rand, Rng};
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
 pub trait EngineBLS {
-    type Engine: Engine + ScalarEngine<Fr = Self::Scalar>;
-    type Scalar: PrimeField + SqrtField; // = <Self::Engine as ScalarEngine>::Fr;
+    type Engine: Engine;
+    type Scalar: PrimeField; // = <Self::Engine as ScalarEngine>::Fr;
 
     /// Group where BLS public keys live
     /// 
@@ -140,7 +139,6 @@ pub type ZBLS = UsualBLS<::pairing::bls12_381::Bls12>;
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 pub const Z_BLS : ZBLS = UsualBLS(::pairing::bls12_381::Bls12);
 
-
 /// Usual BLS variant with tiny 48 byte public keys and 96 byte signatures.
 ///
 /// We favor this variant because verifiers always perform
@@ -152,7 +150,6 @@ pub struct UsualBLS<E: Engine>(pub E);
 
 impl<E: Engine> EngineBLS for UsualBLS<E> {
     type Engine = E;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
     type PublicKeyGroup = E::G1;
     type SignatureGroup = E::G2;
 
@@ -226,7 +223,6 @@ pub struct TinyBLS<E: Engine>(pub E);
 
 impl<E: Engine> EngineBLS for TinyBLS<E> {
     type Engine = E;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
     type PublicKeyGroup = E::G2;
     type SignatureGroup = E::G1;
 
@@ -261,7 +257,6 @@ pub struct PoP<E>(pub E);
 
 impl<E: EngineBLS> EngineBLS for PoP<E> {
     type Engine = E::Engine;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
     type PublicKeyGroup = E::PublicKeyGroup;
     type SignatureGroup = E::SignatureGroup;
 
