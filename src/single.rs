@@ -24,7 +24,12 @@
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
 use ff::{Field, PrimeField, PrimeFieldRepr, PrimeFieldDecodingError}; // ScalarEngine, SqrtField
-use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
+
+//use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
+use pairing::curves::AffineCurve as CurveAffine;
+use pairing::curves::ProjectiveCurve as CurveProjective;
+use pairing::curves::PairingEngine as  Engine;
+
 use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 // use rand_chacha::ChaChaRng;
@@ -36,6 +41,7 @@ use std::io;
 
 use super::*;
 
+use util::GroupDecodingError;
 
 // //////////////// SECRETS //////////////// //
 
@@ -409,7 +415,7 @@ impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
 macro_rules! zbls_serialization {
     ($wrapper:tt,$orientation:tt,$size:expr) => {
 
-impl $wrapper<$orientation<::pairing::bls12_381::Bls12>> {
+impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12>> {
     pub fn to_bytes(&self) -> [u8; $size] {
         let mut bytes = [0u8; $size];
         bytes.copy_from_slice(self.compress().as_ref());
@@ -417,7 +423,7 @@ impl $wrapper<$orientation<::pairing::bls12_381::Bls12>> {
     }
 
     pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,GroupDecodingError> {
-        $wrapper::<$orientation<::pairing::bls12_381::Bls12>>::decompress_from_slice(&bytes[..])
+        $wrapper::<$orientation<::zexe_algebra::curves::bls12>>::decompress_from_slice(&bytes[..])
     }
 }
 
@@ -723,7 +729,7 @@ mod tests {
         SignedMessage { message, publickey, signature }
     }
 
-    pub type TBLS = TinyBLS<::pairing::bls12_381::Bls12>;
+    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12>;
 
     fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
         let SignedMessage { message, publickey, signature } = x;

@@ -13,7 +13,9 @@
 //! adding a more finely tuned scheme.
 
 use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
-use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
+//use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
+use pairing::curves::AffineCurve as CurveAffine;
+use pairing::curves::ProjectiveCurve as CurveProjective;
 
 use rand::{Rng, thread_rng};
 use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};

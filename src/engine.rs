@@ -21,9 +21,18 @@ use std::borrow::{Borrow,Cow};
 use std::ops::Deref;
 
 use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
-use pairing::{CurveAffine, CurveProjective, Engine};
-use rand::{Rand, Rng};
+use pairing::curves::AffineCurve as CurveAffine;
+use pairing::curves::ProjectiveCurve as CurveProjective;
+use pairing::curves::PairingEngine as  Engine;
 
+use rand::{Rand, Rng};
+use zexe_algebra::{bls12_381};
+use std::hash::{Hash, Hasher};
+
+impl Hash for CurveProjective {
+    fn hash<H:` Hasher>(&self, state: &mut H) {
+    }
+}
 
 /// A weakening of `pairing::Engine` to permit transposing the groups.
 ///
@@ -135,10 +144,10 @@ pub trait EngineBLS {
 
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub type ZBLS = UsualBLS<::pairing::bls12_381::Bls12>;
+pub type ZBLS = UsualBLS<::zexe_algebra::bls12_381::Bls12>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub const Z_BLS : ZBLS = UsualBLS(::pairing::bls12_381::Bls12);
+pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12);
 
 
 /// Usual BLS variant with tiny 48 byte public keys and 96 byte signatures.

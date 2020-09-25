@@ -90,7 +90,8 @@ extern crate arrayref;
 // #[macro_use]
 extern crate ff;
 
-extern crate paired as pairing;
+extern crate algebra_core as pairing;
+extern crate algebra as zexe_algebra;
 extern crate rand;
 extern crate sha3;
 
@@ -108,6 +109,7 @@ pub mod pop;
 pub mod bit;
 pub mod delinear;
 pub mod verifiers;
+pub mod util;
 // pub mod delinear;
 
 pub use engine::*;

@@ -7,7 +7,8 @@
 use std::borrow::{Borrow,BorrowMut};
 use std::iter::{once};  // FromIterator
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+//use pairing::{CurveProjective}; // CurveAffine, Engine
+use pairing::curves::ProjectiveCurve as CurveProjective;
 
 use super::*;
 use super::single::SignedMessage;

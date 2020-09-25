@@ -7,7 +7,9 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 // use std::hash::Hash;  // Hasher
 
-use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, SqrtField
+//use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, SqrtField
+use pairing::curves::AffineCurve as CurveAffine;
+use pairing::curves::ProjectiveCurve as CurveProjective;
 
 use super::*;
 

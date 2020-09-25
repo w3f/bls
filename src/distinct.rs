@@ -24,7 +24,8 @@
 use std::collections::HashMap;
 // use std::iter::{FromIterator};
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+//use pairing::{CurveProjective}; // CurveAffine, Engine
+use pairing::curves::ProjectiveCurve as CurveProjective;
 
 use super::*;
 use super::single::SignedMessage;
