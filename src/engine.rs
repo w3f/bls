@@ -24,15 +24,13 @@ use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
 use pairing::curves::PairingEngine as  Engine;
+use pairing::rand::UniformRand;
 
 use rand::{Rand, Rng};
 use zexe_algebra::{bls12_381};
-use std::hash::{Hash, Hasher};
 
-impl Hash for CurveProjective {
-    fn hash<H:` Hasher>(&self, state: &mut H) {
-    }
-}
+use zexe_algebra::bytes::{FromBytes, ToBytes};
+use std::fmt::Debug;
 
 /// A weakening of `pairing::Engine` to permit transposing the groups.
 ///
@@ -60,6 +58,8 @@ pub trait EngineBLS {
     type PublicKeyGroup: 
         CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
         + Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
+    
+    type PublicKeyPrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<<Self::PublickeyGroup as CurveProjective>::Affine>;
 
     /// Group where BLS signatures live
     ///
@@ -68,7 +68,9 @@ pub trait EngineBLS {
     /// scalar multiplicaitons with delinearization.
     type SignatureGroup: 
         CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
-        + Into<<Self::SignatureGroup as CurveProjective>::Affine>;
+        + Into<<Self::SignatureGroup as CurveProjective>::Affine> + From<<Self::SignatureGroup as CurveProjective>::Affine>;
+
+    type SignaturePrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<<Self::SignatureGroup as CurveProjective>::Affine>;
 
     /// Generate a random scalar for use as a secret key.
     fn generate<R: Rng>(rng: &mut R) -> Self::Scalar {
@@ -77,7 +79,7 @@ pub trait EngineBLS {
 
     /// Hash one message to the signature curve.
     fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-        <Self::SignatureGroup as CurveProjective>::hash(message.borrow())
+        <Self::SignatureGroup as UniformRand>::rand(message.borrow())
     }
 
     /// Run the Miller loop from `Engine` but orients its arguments
@@ -85,8 +87,8 @@ pub trait EngineBLS {
     fn miller_loop<'a,I>(i: I) -> <Self::Engine as Engine>::Fqk
     where
         I: IntoIterator<Item = (
-            &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
-            &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
+            &'a Self::PublicKeyGroupPrepared,
+            &'a Self::SignatureGroupPrepared,
         )>;
 
     /// Perform final exponentiation on the result of a Miller loop.
@@ -116,13 +118,13 @@ pub trait EngineBLS {
     /// simplify replacing mid-level routines with optimized variants,
     /// like versions that cache public key preperation or use fewer pairings. 
     fn verify_prepared<'a,I>(
-        signature: &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
+        signature: &'a Self::SignaturePrepared,
         inputs: I
       ) -> bool
     where
         I: IntoIterator<Item = (
-            &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
-            &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
+            &'a Self::PublicKeyGroupPrepared,
+            &'a Self::SignatureGroupPrepared,
         )>
     {
         let g1 = Self::public_key_minus_generator_prepared();
@@ -134,7 +136,7 @@ pub trait EngineBLS {
 
     /// Prepared negative of the generator of the public key curve.
     fn public_key_minus_generator_prepared()
-     -> Cow<'static, <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared >
+     -> Cow<'static, Self::PublicKeyPrepared>
     {
          let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
          g1_minus_generator.negate();
@@ -148,7 +150,6 @@ pub type ZBLS = UsualBLS<::zexe_algebra::bls12_381::Bls12>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12);
-
 
 /// Usual BLS variant with tiny 48 byte public keys and 96 byte signatures.
 ///
