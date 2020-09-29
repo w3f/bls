@@ -16,17 +16,13 @@
 //! but still with their affine, projective, and compressed forms,
 //! and batch normalization. 
 
-
 use std::borrow::{Borrow,Cow};
 use std::ops::Deref;
 
 use zexe_algebra::{PrimeField, SquareRootField};
 use pairing::curves::PairingEngine;
-use pairing::curves::ProjectiveCurve;
 
 use rand::{Rand, Rng};
-
-use core::hash::{Hash};
 
 use zexe_adapter::{CurveAffine, CurveProjective};
 
@@ -73,7 +69,7 @@ pub trait EngineBLS {
 
     /// Hash one message to the signature curve.
     fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-        <Self::SignatureGroup as Hash>::hash(message.borrow())
+        <Self::SignatureGroup as CurveProjective>::hash(message.borrow())
     }
 
     /// Run the Miller loop from `Engine` but orients its arguments

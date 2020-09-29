@@ -38,7 +38,9 @@ pub trait CurveProjective: ProjectiveCurve + From<<Self as CurveProjective>::Aff
     type Affine: CurveAffine<Projective = Self, ScalarField = <Self as ProjectiveCurve>::ScalarField, BaseField = <Self as ProjectiveCurve>::BaseField>
         + From<Self>
         + Into<Self>;
-   
+
+    fn hash(msg: &[u8]) -> Self;
+
 }
 
 /// An encoded elliptic curve point, which should essentially wrap a `[u8; N]`.
@@ -126,8 +128,3 @@ pub trait ScalarEngine: Sized + 'static + Clone {
     /// This is the scalar field of the engine's groups.
     type Fr: PrimeField + SquareRootField;
 }
-
-// impl Hash for CurveProjective {
-//     fn hash<H:` Hasher>(&self, state: &mut H) {
-//      }
-// }
