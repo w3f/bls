@@ -23,11 +23,9 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ff::{Field, PrimeField, PrimeFieldRepr, PrimeFieldDecodingError}; // ScalarEngine, SqrtField
+use pairing::{Field, PrimeField}; // ScalarEngine, SqrtField
 
-//use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
-use pairing::curves::AffineCurve as CurveAffine;
-use pairing::curves::ProjectiveCurve as CurveProjective;
+use zexe_adapter::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError, PrimeFieldDecodingError};  // Engine, PrimeField, SqrtField
 use pairing::curves::PairingEngine as  Engine;
 
 use rand::{Rng, thread_rng, SeedableRng, chacha::ChaChaRng};
@@ -40,8 +38,6 @@ use std::iter::once;
 use std::io;
 
 use super::*;
-
-use util::GroupDecodingError;
 
 // //////////////// SECRETS //////////////// //
 
@@ -60,7 +56,7 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     /// satisfies both `AsRef<[u64]>` and `ff::PrimeFieldRepr`.
     /// We suggest `ff::PrimeFieldRepr::write_le` for serialization,
     /// invoked by our `write` method.
-    pub fn to_repr(&self) -> <E::Scalar as PrimeField>::Repr {
+    pub fn to_repr(&self) -> <E::Scalar as PrimeField>::BigInt {
         self.0.into_repr()
     }
     pub fn write<W: io::Write>(&self, writer: W) -> io::Result<()> {
@@ -71,11 +67,11 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     /// satisfies `Default`, `AsMut<[u64]>`, and `ff::PrimeFieldRepr`.
     /// We suggest `ff::PrimeFieldRepr::read_le` for deserialization,
     /// invoked via our `read` method, which requires a seperate call.
-    pub fn from_repr(repr: <E::Scalar as PrimeField>::Repr) -> Result<Self,PrimeFieldDecodingError> {
+    pub fn from_repr(repr: <E::Scalar as PrimeField>::BigInt) -> Result<Self,PrimeFieldDecodingError> {
         Ok(SecretKeyVT(<E::Scalar as PrimeField>::from_repr(repr) ?))
     }
-    pub fn read<R: io::Read>(reader: R) -> io::Result<<E::Scalar as PrimeField>::Repr> {
-        let mut repr = <E::Scalar as PrimeField>::Repr::default();
+    pub fn read<R: io::Read>(reader: R) -> io::Result<<E::Scalar as PrimeField>::BigInt> {
+        let mut repr = <E::Scalar as PrimeField>::BigInt::default();
         repr.read_le(reader) ?;
         Ok(repr)
     }
@@ -415,7 +411,7 @@ impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
 macro_rules! zbls_serialization {
     ($wrapper:tt,$orientation:tt,$size:expr) => {
 
-impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12>> {
+impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12_381>> {
     pub fn to_bytes(&self) -> [u8; $size] {
         let mut bytes = [0u8; $size];
         bytes.copy_from_slice(self.compress().as_ref());
@@ -423,7 +419,7 @@ impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12>> {
     }
 
     pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,GroupDecodingError> {
-        $wrapper::<$orientation<::zexe_algebra::curves::bls12>>::decompress_from_slice(&bytes[..])
+        $wrapper::<$orientation<::zexe_algebra::bls12_381::Bls12_381>>::decompress_from_slice(&bytes[..])
     }
 }
 
@@ -729,7 +725,7 @@ mod tests {
         SignedMessage { message, publickey, signature }
     }
 
-    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12>;
+    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12_381>;
 
     fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
         let SignedMessage { message, publickey, signature } = x;

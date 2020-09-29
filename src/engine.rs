@@ -20,19 +20,15 @@
 use std::borrow::{Borrow,Cow};
 use std::ops::Deref;
 
-use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
-use pairing::curves::AffineCurve as CurveAffine;
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::curves::PairingEngine as  Engine;
+use zexe_algebra::{PrimeField, SquareRootField};
+use pairing::curves::PairingEngine;
+use pairing::curves::ProjectiveCurve;
 
 use rand::{Rand, Rng};
-use zexe_algebra::{bls12_381};
-use std::hash::{Hash, Hasher};
 
-impl Hash for CurveProjective {
-    fn hash<H:` Hasher>(&self, state: &mut H) {
-    }
-}
+use core::hash::{Hash};
+
+use zexe_adapter::{CurveAffine, CurveProjective};
 
 /// A weakening of `pairing::Engine` to permit transposing the groups.
 ///
@@ -49,8 +45,8 @@ impl Hash for CurveProjective {
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
 pub trait EngineBLS {
-    type Engine: Engine + ScalarEngine<Fr = Self::Scalar>;
-    type Scalar: PrimeField + SqrtField; // = <Self::Engine as ScalarEngine>::Fr;
+    type Engine: PairingEngine;
+    type Scalar: PrimeField + SquareRootField;
 
     /// Group where BLS public keys live
     /// 
@@ -58,7 +54,7 @@ pub trait EngineBLS {
     /// becuase all verifiers perform additions on this curve, or
     /// even scalar multiplicaitons with delinearization.
     type PublicKeyGroup: 
-        CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
+        CurveProjective<ScalarField = Self::Scalar>
         + Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
 
     /// Group where BLS signatures live
@@ -67,7 +63,7 @@ pub trait EngineBLS {
     /// becuase only aggregators perform additions on this curve, or
     /// scalar multiplicaitons with delinearization.
     type SignatureGroup: 
-        CurveProjective<Engine = Self::Engine, Scalar = Self::Scalar>
+        CurveProjective<ScalarField = Self::Scalar>
         + Into<<Self::SignatureGroup as CurveProjective>::Affine>;
 
     /// Generate a random scalar for use as a secret key.
@@ -77,12 +73,12 @@ pub trait EngineBLS {
 
     /// Hash one message to the signature curve.
     fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-        <Self::SignatureGroup as CurveProjective>::hash(message.borrow())
+        <Self::SignatureGroup as Hash>::hash(message.borrow())
     }
 
     /// Run the Miller loop from `Engine` but orients its arguments
     /// to be a `SignatureGroup` and `PublicKeyGroup`.
-    fn miller_loop<'a,I>(i: I) -> <Self::Engine as Engine>::Fqk
+    fn miller_loop<'a,I>(i: I) -> <Self::Engine as PairingEngine>::Fqk
     where
         I: IntoIterator<Item = (
             &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
@@ -90,13 +86,13 @@ pub trait EngineBLS {
         )>;
 
     /// Perform final exponentiation on the result of a Miller loop.
-    fn final_exponentiation(e: &<Self::Engine as Engine>::Fqk) -> Option<<Self::Engine as Engine>::Fqk> {
+    fn final_exponentiation(e: &<Self::Engine as PairingEngine>::Fqk) -> Option<<Self::Engine as PairingEngine>::Fqk> {
         Self::Engine::final_exponentiation(e)
     }
 
     /// Performs a pairing operation `e(p, q)` by calling `Engine::pairing`
     /// but orients its arguments to be a `PublicKeyGroup` and `SignatureGroup`.
-    fn pairing<G1,G2>(p: G1, q: G2) -> <Self::Engine as Engine>::Fqk
+    fn pairing<G1,G2>(p: G1, q: G2) -> <Self::Engine as PairingEngine>::Fqk
     where
         G1: Into<<Self::PublicKeyGroup as CurveProjective>::Affine>,
         G2: Into<<Self::SignatureGroup as CurveProjective>::Affine>;
@@ -129,7 +125,7 @@ pub trait EngineBLS {
         Self::final_exponentiation( & Self::miller_loop(
             inputs.into_iter().map(|t| t)  // reborrow hack
                 .chain(::std::iter::once( (g1.deref(), signature) ))
-        ) ).unwrap() == <Self::Engine as Engine>::Fqk::one()
+        ) ).unwrap() == <Self::Engine as PairingEngine>::Fqk::one()
     }
 
     /// Prepared negative of the generator of the public key curve.
@@ -144,10 +140,10 @@ pub trait EngineBLS {
 
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub type ZBLS = UsualBLS<::zexe_algebra::bls12_381::Bls12>;
+pub type ZBLS = UsualBLS<::zexe_algebra::bls12_381::Bls12_381>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12);
+pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{ });
 
 
 /// Usual BLS variant with tiny 48 byte public keys and 96 byte signatures.
@@ -157,13 +153,17 @@ pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12);
 /// scalar multiplications with delinearization. 
 /// We also orient this variant to match zcash's traits.
 #[derive(Default)]
-pub struct UsualBLS<E: Engine>(pub E);
+pub struct UsualBLS<E: PairingEngine>(pub E);
 
-impl<E: Engine> EngineBLS for UsualBLS<E> {
-    type Engine = E;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
-    type PublicKeyGroup = E::G1;
-    type SignatureGroup = E::G2;
+impl<E: PairingEngine> EngineBLS for UsualBLS<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{
+    type Scalar = E::Fr;
+    type PublicKeyGroup = E::G1Projective;
+    type SignatureGroup = E::G2Projective;
 
     fn miller_loop<'a,I>(i: I) -> E::Fqk
     where
@@ -231,13 +231,19 @@ impl<E: Engine> EngineBLS for UsualBLS<E> {
 /// Yet, there are specific use cases where this variant performs
 /// better.  We swapy two group roles relative to zcash here.
 #[derive(Default)]
-pub struct TinyBLS<E: Engine>(pub E);
+pub struct TinyBLS<E: PairingEngine>(pub E);
 
-impl<E: Engine> EngineBLS for TinyBLS<E> {
+impl<E: PairingEngine> EngineBLS for TinyBLS<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+{
+
     type Engine = E;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
-    type PublicKeyGroup = E::G2;
-    type SignatureGroup = E::G1;
+    type Scalar = <Self::Engine as PairingEngine>::Fr;
+    type PublicKeyGroup = E::G2Projective;
+    type SignatureGroup = E::G1Projective;
 
     fn miller_loop<'a,I>(i: I) -> E::Fqk
     where
@@ -266,30 +272,35 @@ impl<E: Engine> EngineBLS for TinyBLS<E> {
 
 /// Rogue key attack defence by proof-of-possession
 #[derive(Default)]
-pub struct PoP<E>(pub E);
+pub struct PoP<E: PairingEngine>(pub E);
 
-impl<E: EngineBLS> EngineBLS for PoP<E> {
-    type Engine = E::Engine;
-    type Scalar = <Self::Engine as ScalarEngine>::Fr;
-    type PublicKeyGroup = E::PublicKeyGroup;
-    type SignatureGroup = E::SignatureGroup;
+impl<E: PairingEngine> EngineBLS for PoP<E> 
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{
+    type Engine = E;
+    type Scalar = <Self::Engine as PairingEngine>::Fr;
+    //type PublicKeyGroup = Self::PublicKeyGroup;
+    //type SignatureGroup = Self::SignatureGroup;
 
-    fn miller_loop<'a,I>(i: I) -> <Self::Engine as Engine>::Fqk
+    fn miller_loop<'a,I>(i: I) -> <Self::Engine as PairingEngine>::Fqk
     where
         I: IntoIterator<Item = (
             &'a <<Self::PublicKeyGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
             &'a <<Self::SignatureGroup as CurveProjective>::Affine as CurveAffine>::Prepared,
         )>,
     {
-        E::miller_loop(i)
+        Self::miller_loop(i)
     }
 
-    fn pairing<G1,G2>(p: G1, q: G2) -> <E::Engine as Engine>::Fqk
+    fn pairing<G1,G2>(p: G1, q: G2) -> <Self::Engine as PairingEngine>::Fqk
     where
         G1: Into<<Self::PublicKeyGroup as CurveProjective>::Affine>,
         G2: Into<<Self::SignatureGroup as CurveProjective>::Affine>,
     {
-        E::pairing(p,q)
+        Self::pairing(p,q)
     }
 }
 
@@ -302,9 +313,24 @@ impl<E: EngineBLS> EngineBLS for PoP<E> {
 /// `delinearize` before signing or verifying.
 pub trait UnmutatedKeys : EngineBLS {}
 
-impl<E: Engine> UnmutatedKeys for TinyBLS<E> {}
-impl<E: Engine> UnmutatedKeys for UsualBLS<E> {}
-impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
+impl<E: PairingEngine> UnmutatedKeys for TinyBLS<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{}
+impl<E: PairingEngine> UnmutatedKeys for UsualBLS<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{}
+impl<E: PairingEngine> UnmutatedKeys for PoP<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{}
 
 /// Any `EngineBLS` whose keys can be trivially deserlialized.
 /// 
@@ -312,7 +338,17 @@ impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
 /// developers must call `i_have_checked_this_proof_of_possession`.
 pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
 
-impl<E: Engine> DeserializePublicKey for TinyBLS<E> {}
-impl<E: Engine> DeserializePublicKey for UsualBLS<E> {}
+impl<E: PairingEngine> DeserializePublicKey for TinyBLS<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{}
+impl<E: PairingEngine> DeserializePublicKey for UsualBLS<E>
+where <E as PairingEngine>::G1Projective: CurveProjective,
+<E as PairingEngine>::G2Projective: CurveProjective,
+<<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+{}
 
 

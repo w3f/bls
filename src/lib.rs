@@ -98,6 +98,7 @@ extern crate sha3;
 #[cfg(feature = "serde")]
 extern crate serde;
 
+extern crate core;
 
 use std::borrow::Borrow;
 
@@ -109,7 +110,7 @@ pub mod pop;
 pub mod bit;
 pub mod delinear;
 pub mod verifiers;
-pub mod util;
+pub mod zexe_adapter;
 // pub mod delinear;
 
 pub use engine::*;
