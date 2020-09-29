@@ -38,7 +38,7 @@ use std::iter::once;
 use std::io;
 
 use super::*;
-
+pub use engine::EngineBLS;
 // //////////////// SECRETS //////////////// //
 
 /// Secret signing key lacking the side channel protections from

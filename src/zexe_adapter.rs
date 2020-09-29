@@ -6,12 +6,13 @@ use zexe_algebra::{PrimeField, SquareRootField};
 use std::fmt;
 
 use core::{
-    ops::{Add, AddAssign, MulAssign, Neg, Sub, SubAssign},
+    ops::{MulAssign},
 };
 
 /// Affine representation of an elliptic curve point that can be used
 /// to perform pairings.
-pub trait CurveAffine: AffineCurve + From<<Self as CurveAffine>::Projective> {
+pub trait CurveAffine: AffineCurve 
+    + From<<Self as CurveAffine>::Projective> {
     type Projective: CurveProjective<Affine = Self, ScalarField = <Self as AffineCurve>::ScalarField, BaseField = <Self as AffineCurve>::BaseField>
         + From<Self>
         + Into<Self>
@@ -32,8 +33,9 @@ pub trait CurveAffine: AffineCurve + From<<Self as CurveAffine>::Projective> {
     
 }
 
-pub trait CurveProjective: ProjectiveCurve + From<<Self as CurveProjective>::Affine>
-    + MulAssign<<Self as ProjectiveCurve>::ScalarField>
+pub trait CurveProjective: ProjectiveCurve
+    + From<<Self as CurveProjective>::Affine>
+    + MulAssign<<Self as ProjectiveCurve>::ScalarField>  where <<Self as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<Self as ProjectiveCurve>::ScalarField>
 {
     type Affine: CurveAffine<Projective = Self, ScalarField = <Self as ProjectiveCurve>::ScalarField, BaseField = <Self as ProjectiveCurve>::BaseField>
         + From<Self>

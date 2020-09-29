@@ -21,8 +21,15 @@ use std::ops::Deref;
 
 use zexe_algebra::{PrimeField, SquareRootField};
 use pairing::curves::PairingEngine;
+use pairing::curves::AffineCurve;
+use pairing::curves::ProjectiveCurve;
 
 use rand::{Rand, Rng};
+
+use core::{
+    ops::{MulAssign},
+};
+
 
 use zexe_adapter::{CurveAffine, CurveProjective};
 
@@ -40,7 +47,10 @@ use zexe_adapter::{CurveAffine, CurveProjective};
 ///
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
-pub trait EngineBLS {
+pub trait EngineBLS
+where <<<Self as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<<Self as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField>,
+<<<Self as EngineBLS>::SignatureGroup as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<Self as EngineBLS>::Scalar>    
+{
     type Engine: PairingEngine;
     type Scalar: PrimeField + SquareRootField;
 
@@ -50,7 +60,7 @@ pub trait EngineBLS {
     /// becuase all verifiers perform additions on this curve, or
     /// even scalar multiplicaitons with delinearization.
     type PublicKeyGroup: 
-        CurveProjective<ScalarField = Self::Scalar>
+        CurveProjective 
         + Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
 
     /// Group where BLS signatures live
@@ -155,7 +165,9 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>
 {
     type Scalar = E::Fr;
     type PublicKeyGroup = E::G1Projective;
@@ -234,6 +246,9 @@ where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
 <<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>
+
 {
 
     type Engine = E;
@@ -274,7 +289,9 @@ impl<E: PairingEngine> EngineBLS for PoP<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,    
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>
 {
     type Engine = E;
     type Scalar = <Self::Engine as PairingEngine>::Fr;
@@ -307,44 +324,62 @@ where <E as PairingEngine>::G1Projective: CurveProjective,
 /// cannot be serialized or deserialized directly.  Instead, you
 /// should interact with the keys using the base `EngineBLS` and call
 /// `delinearize` before signing or verifying.
-pub trait UnmutatedKeys : EngineBLS {}
-
+pub trait UnmutatedKeys : EngineBLS
+where <<<Self as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<<Self as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField>,
+<<<Self as EngineBLS>::SignatureGroup as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<Self as EngineBLS>::Scalar>,
+<Self as EngineBLS>::SignatureGroup: MulAssign<<Self as EngineBLS>::Scalar>
+{}
 impl<E: PairingEngine> UnmutatedKeys for TinyBLS<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>
+
 {}
 impl<E: PairingEngine> UnmutatedKeys for UsualBLS<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>    
 {}
 impl<E: PairingEngine> UnmutatedKeys for PoP<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>    
 {}
 
 /// Any `EngineBLS` whose keys can be trivially deserlialized.
 /// 
 /// We disallow deserlialization for proof-of-possession, so that
 /// developers must call `i_have_checked_this_proof_of_possession`.
-pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
+pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys
+where <<<Self as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<<Self as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField>,
+<<<Self as EngineBLS>::SignatureGroup as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<Self as EngineBLS>::Scalar>,
+<Self as EngineBLS>::SignatureGroup: MulAssign<<Self as EngineBLS>::Scalar>
+{}
 
 impl<E: PairingEngine> DeserializePublicKey for TinyBLS<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>    
 {}
 impl<E: PairingEngine> DeserializePublicKey for UsualBLS<E>
 where <E as PairingEngine>::G1Projective: CurveProjective,
 <E as PairingEngine>::G2Projective: CurveProjective,
 <<E as PairingEngine>::G1Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G1Projective>,
-<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>    
+<<E as PairingEngine>::G2Projective as CurveProjective>::Affine: From<<E as PairingEngine>::G2Projective>,
+<<<E as PairingEngine>::G2Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>,
+<<<E as PairingEngine>::G1Projective as CurveProjective>::Affine as AffineCurve>::Projective: MulAssign<<E as PairingEngine>::Fr>    
 {}
 
 
