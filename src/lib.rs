@@ -93,6 +93,8 @@ extern crate ff;
 extern crate algebra_core as pairing;
 extern crate algebra as zexe_algebra;
 extern crate rand;
+extern crate rand_core;
+extern crate rand_chacha;
 extern crate sha3;
 
 #[cfg(feature = "serde")]
@@ -109,7 +111,6 @@ pub mod pop;
 pub mod bit;
 pub mod delinear;
 pub mod verifiers;
-pub mod util;
 // pub mod delinear;
 
 pub use engine::*;
