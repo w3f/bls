@@ -23,7 +23,7 @@ use std::ops::Deref;
 use pairing::fields::{Field, PrimeField, SquareRootField};
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::curves::PairingEngine;
+use pairing::curves::{PairingEngine, prepare_g1, prepare_g2};
 use pairing::prelude::UniformRand;
 use pairing::One;
 
@@ -110,9 +110,9 @@ pub trait EngineBLS {
     where
         Self::PublicKeyPrepared: 'a,
         Self::SignaturePrepared: 'a,
-        I: IntoIterator<Item = (
-            &'a <Self as EngineBLS>::PublicKeyPrepared,
-            &'a Self::SignaturePrepared,
+        I: IntoIterator<Item = &'a (
+            <Self as EngineBLS>::PublicKeyPrepared,
+            Self::SignaturePrepared,
         )>;
 
     /// Perform final exponentiation on the result of a Miller loop.
@@ -146,27 +146,29 @@ pub trait EngineBLS {
         inputs: I
       ) -> bool
     where
-        Self::PublicKeyPrepared: 'static,
+        Self::PublicKeyPrepared: 'a,
         Self::SignaturePrepared: 'a,
-        I: IntoIterator<Item = (
-            &'a Self::PublicKeyPrepared,
-            &'a Self::SignaturePrepared,
+        I: IntoIterator<Item = &'a (
+            Self::PublicKeyPrepared,
+            Self::SignaturePrepared,
         )>
     {
-        let g1 = Self::public_key_minus_generator_prepared();
-        Self::final_exponentiation( & Self::miller_loop(
-            inputs.into_iter().map(|t| t)  // reborrow hack
-                .chain(::std::iter::once( (g1.deref(), signature) ))
-        ) ).unwrap() == <Self::Engine as PairingEngine>::Fqk::one()
+        //let g1 = Self::public_key_minus_generator_prepared();
+        Self::final_exponentiation( & Self::miller_loop( inputs
+                                                         //.into_iter().map(|t| t)
+                                                         //.chain( &(*g1.deref().deref(), *signature.deref() ) )
+             // inputs.into_iter().map(|t| t)  // reborrow hack
+             //     .chain( (g1.deref(), signature.deref()) )
+         ) ).unwrap() == <Self::Engine as PairingEngine>::Fqk::one()
     }
     
     /// Prepared negative of the generator of the public key curve.
     fn public_key_minus_generator_prepared()
-     -> Cow<'static, Self::PublicKeyPrepared>
-    {
-         let mut g1_minus_generator = Self::PublicKeyGroup::Affine::prime_subgroup_generator();
-        Cow::Owned(-g1_minus_generator)
-    }
+    -> Cow<'static, Self::PublicKeyPrepared>;
+    // {
+    //      let mut g1_minus_generator = Self::PublicKeyGroup::Affine::prime_subgroup_generator();
+    //     Cow::Owned(-g1_minus_generator)
+    // }
 
     // /// Abstracting out preparation of the public key without commiting to
     // /// to prepare for G1 or G2affine (only G1/G2Affine implements negate function);
@@ -195,26 +197,34 @@ pub struct UsualBLS<E: PairingEngine>(pub E);
 impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
     type Engine = E;
     type Scalar = <Self::Engine as PairingEngine>::Fr;
+
     type PublicKeyGroup = E::G1Projective;
-    type SignatureGroup = E::G2Projective;
     type PublicKeyGroupAffine = E::G1Affine;
-    type SignatureGroupAffine = E::G2Affine;
     type PublicKeyPrepared = E::G1Prepared;
+    type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fq;
+
+
+    type SignatureGroup = E::G2Projective;
+    type SignatureGroupAffine = E::G2Affine;
     type SignaturePrepared = E::G2Prepared;
+    type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+
     
     fn miller_loop<'a,I>(i: I) -> E::Fqk
     where
-        I: IntoIterator<Item = (
-            &'a Self::PublicKeyPrepared,
-            &'a Self::SignaturePrepared,
+        // Self::PublicKeyPrepared: 'a,
+        // Self::SignaturePrepared: 'a,
+        I: IntoIterator<Item = &'a (
+             Self::PublicKeyPrepared,
+             Self::SignaturePrepared,
         )>
     {
         // We require an ugly unecessary allocation here because
         // zcash's pairing library cnsumes an iterator of references
         // to tuples of references, which always requires 
-        let i = i.into_iter().map(|t| t)
-              .collect::<Vec<(&Self::PublicKeyPrepared,&Self::SignatureGroupPrepared)>>();
-        E::miller_loop(&i)
+        // let i = i.into_iter().map(|t| t)
+        //       .collect::<Vec<(&Self::PublicKeyPrepared,&Self::SignaturePrepared)>>();
+        E::miller_loop(i)
     }
 
     fn pairing<G1,G2>(p: G1, q: G2) -> E::Fqk
@@ -249,10 +259,9 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
             if let Some(g1_ref) = g1.downcast_ref() { return Cow::Borrowed( g1_ref ); }
         }
 
-        let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::one();
-        g1_minus_generator.negate();
-        let g1 = Box::new( g1_minus_generator.prepare() );
-        let g1: &'static Self::PublicKeyGroupPrepared
+        let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
+        let g1 = Box::new( (-g1_minus_generator).into() );
+        let g1: &'static Self::PublicKeyPrepared
          = Box::<_>::leak(g1);
         v.push(g1 as &'static (dyn Any + Send + Sync + 'static));
         Cow::Borrowed( g1 )
@@ -261,49 +270,53 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
 }
 
 
-/// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
-///
-/// We recommend gainst this variant by default because verifiers
-/// always perform `O(signers)` additions on the `PublicKeyGroup`,
-/// or worse 128 bit scalar multiplications with delinearization. 
-/// Yet, there are specific use cases where this variant performs
-/// better.  We swapy two group roles relative to zcash here.
-#[derive(Default)]
-pub struct TinyBLS<E: PairingEngine>(pub E);
+// /// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
+// ///
+// /// We recommend gainst this variant by default because verifiers
+// /// always perform `O(signers)` additions on the `PublicKeyGroup`,
+// /// or worse 128 bit scalar multiplications with delinearization. 
+// /// Yet, there are specific use cases where this variant performs
+// /// better.  We swapy two group roles relative to zcash here.
+// #[derive(Default)]
+// pub struct TinyBLS<E: PairingEngine>(pub E);
 
-impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
-    type Engine = E;
-    type Scalar = <Self::Engine as PairingEngine>::Fr;
-    type PublicKeyGroup = E::G2Projective;
-    type SignatureGroup = E::G1Projective;
-    type PublicKeyGroupAffine = E::G2Affine;
-    type SignatureGroupAffine = E::G1Affine;
-    type PublicKeyPrepared = E::G2Prepared;
-    type SignaturePrepared = E::G1Prepared;
+// impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
+//     type Engine = E;
+//     type Scalar = <Self::Engine as PairingEngine>::Fr;
 
-    fn miller_loop<'a,I>(i: I) -> E::Fqk
-    where
-        I: IntoIterator<Item = (
-            &'a Self::PublicKeyPrepared,
-            &'a Self::SignaturePrepared,
-        )>,
-    {
-        // We require an ugly unecessary allocation here because
-        // zcash's pairing library cnsumes an iterator of references
-        // to tuples of references, which always requires 
-        let i = i.into_iter().map(|(x,y)| (y,x))
-              .collect::<Vec<(&Self::SignatureGroupPrepared, &Self::PublicKeyGroupPrepared)>>();
-        E::miller_loop(&i)
-    }
+//     type SignatureGroup = E::G1Projective;
+//     type SignatureGroupAffine = E::G1Affine;
+//     type SignaturePrepared = E::G1Prepared;
+//     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fq;
 
-    fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
-    where
-        G1: Into<E::G1Affine>,
-        G2: Into<E::G2Affine>,
-    {
-        E::pairing(q,p)
-    }
-}
+//     type PublicKeyGroup = E::G2Projective;
+//     type PublicKeyGroupAffine = E::G2Affine;
+//     type PublicKeyPrepared = E::G2Prepared;
+//     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+
+//     fn miller_loop<'a,I>(i: I) -> E::Fqk
+//     where
+//         I: IntoIterator<Item = (
+//             &'a Self::PublicKeyPrepared,
+//             &'a Self::SignaturePrepared,
+//         )>,
+//     {
+//         // We require an ugly unecessary allocation here because
+//         // zcash's pairing library cnsumes an iterator of references
+//         // to tuples of references, which always requires 
+//         let i = i.into_iter().map(|(x,y)| (y,x))
+//               .collect::<Vec<(&Self::SignatureGroupPrepared, &Self::PublicKeyGroupPrepared)>>();
+//         E::miller_loop(&i)
+//     }
+
+//     fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
+//     where
+//         G1: Into<E::G1Affine>,
+//         G2: Into<E::G2Affine>,
+//     {
+//         E::pairing(q,p)
+//     }
+// }
 
 
 // /// Rogue key attack defence by proof-of-possession
@@ -361,6 +374,6 @@ impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
 // pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
 
 // impl<E: PairingEngine> DeserializePublicKey for TinyBLS<E> {}
-// impl<E: PairingEngine> DeserializePublicKey for UsualBLS<E> {}
+//impl<E: PairingEngine> DeserializePublicKey for UsualBLS<E> {}
 
 

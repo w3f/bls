@@ -468,11 +468,11 @@ impl<E: EngineBLS> Signature<E> {
 pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // TODO: Serialization
 
-impl<E: EngineBLS> PublicKey<E> where E: DeserializePublicKey {
-    pub fn i_have_checked_this_proof_of_possession(self) -> PublicKey<PoP<E>> {
-        PublicKey(self.0)
-    }
-}
+// impl<E: EngineBLS> PublicKey<E> where E: DeserializePublicKey {
+//     pub fn i_have_checked_this_proof_of_possession(self) -> PublicKey<PoP<E>> {
+//         PublicKey(self.0)
+//     }
+// }
 
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
