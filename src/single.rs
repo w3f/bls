@@ -24,6 +24,8 @@
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
 use pairing::{Field, PrimeField}; // ScalarEngine, SqrtField
+use pairing::fields::{SquareRootField};
+use pairing::{One, Zero};
 
 //use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
 use pairing::curves::AffineCurve as CurveAffine;
@@ -87,8 +89,10 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
 impl<E: EngineBLS> SecretKeyVT<E> {
     /// Sign without side channel protections from key mutation.
     pub fn sign(&self, message: Message) -> Signature<E> {
-        let mut s = message.hash_to_signature_curve::<E>();
-        s.mul_assign(self.0);
+        let mut s : E::SignatureGroup = message.hash_to_signature_curve::<E>();
+	let e_scalar : E::Scalar = self.0;
+	let sign_scalar : <E::SignatureGroup as pairing::ProjectiveCurve>::ScalarField = self.0;
+        s *= e_scalar;
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
         Signature(s)
@@ -115,7 +119,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-        PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::one().mul(self.0) )
+        PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator().mul(self.0) )
         // let mut g = <E::PublicKeyGroup as CurveProjective>::one();
         // g.mul_assign(self.0);
         // PublicKey(p)

@@ -17,16 +17,15 @@
 //! and batch normalization. 
 
 use std::borrow::{Borrow,Cow};
-use std::ops::Deref;
-
+use std::ops::{Deref, MulAssign};
+    
 //use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
 use pairing::fields::{Field, PrimeField, SquareRootField};
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
 use pairing::curves::{PairingEngine, prepare_g1, prepare_g2};
 use pairing::prelude::UniformRand;
-use pairing::One;
-
+use pairing::{One, Zero};
 use rand::{Rng, rngs::{StdRng}};
 use rand_core::RngCore;
 
@@ -62,14 +61,19 @@ pub trait EngineBLS {
     type PublicKeyGroupBaseField: Field;
 
     type PublicKeyGroupAffine:
-        CurveAffine<ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField, Projective = Self::PublicKeyGroup>
-        + Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
+    CurveAffine<ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField, Projective = Self::PublicKeyGroup>
+        + From<Self::PublicKeyGroup>
+        + Into<Self::PublicKeyGroup>
+        + Into<Self::PublicKeyPrepared>;
+        //+ Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
 
     type PublicKeyGroup: 
         CurveProjective<Affine = Self::PublicKeyGroupAffine, ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField>
-        + Into<<Self::PublicKeyGroup as CurveProjective>::Affine>;
+        + From<Self::PublicKeyGroupAffine>
+        + Into<Self::PublicKeyGroupAffine>
+	+ MulAssign<Self::Scalar>;
     
-    type PublicKeyPrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<<Self::PublicKeyGroup as CurveProjective>::Affine>;
+    type PublicKeyPrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::PublicKeyGroupAffine>;
 
     /// Group where BLS signatures live
     ///
@@ -80,12 +84,16 @@ pub trait EngineBLS {
 
     type SignatureGroupAffine:
         CurveAffine<ScalarField = Self::Scalar, BaseField = Self::SignatureGroupBaseField, Projective = Self::SignatureGroup>
-        + Into<<Self::SignatureGroup as CurveProjective>::Affine>;
+        + From<Self::SignatureGroup>
+        + Into<Self::SignatureGroup>
+	+ Into<Self::SignaturePrepared>;
     
     type SignatureGroup:  CurveProjective<Affine = Self::SignatureGroupAffine, ScalarField = Self::Scalar, BaseField = Self::SignatureGroupBaseField>
-         + Into<<Self::SignatureGroup as CurveProjective>::Affine> + From<<Self::SignatureGroup as CurveProjective>::Affine>;
+        + Into<Self::SignatureGroupAffine>
+	+ From<Self::SignatureGroupAffine>
+	+ MulAssign<Self::Scalar>;
 
-    type SignaturePrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<<Self::SignatureGroup as CurveProjective>::Affine>;
+    type SignaturePrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::SignatureGroupAffine>;
 
     /// Generate a random scalar for use as a secret key.
     fn generate<R: Rng + RngCore>(rng: &mut R) -> Self::Scalar {
@@ -311,16 +319,16 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
 // }
 
 
-// /// Any `EngineBLS` whose keys remain unmutated.
-// ///
-// /// We mutate delinearized public keys when loading them, so they
-// /// cannot be serialized or deserialized directly.  Instead, you
-// /// should interact with the keys using the base `EngineBLS` and call
-// /// `delinearize` before signing or verifying.
-// pub trait UnmutatedKeys : EngineBLS {}
+/// Any `EngineBLS` whose keys remain unmutated.
+///
+/// We mutate delinearized public keys when loading them, so they
+/// cannot be serialized or deserialized directly.  Instead, you
+/// should interact with the keys using the base `EngineBLS` and call
+/// `delinearize` before signing or verifying.
+pub trait UnmutatedKeys {} //: EngineBLS {}
 
 // impl<E: PairingEngine> UnmutatedKeys for TinyBLS<E> {}
-// impl<E: PairingEngine> UnmutatedKeys for UsualBLS<E> {}
+impl<E: PairingEngine> UnmutatedKeys for UsualBLS<E> {}
 // //impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
 
 // /// Any `EngineBLS` whose keys can be trivially deserlialized.

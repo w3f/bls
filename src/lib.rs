@@ -105,7 +105,7 @@ use std::borrow::Borrow;
 
 
 pub mod engine;
-//pub mod single;
+pub mod single;
 // pub mod distinct;
 //pub mod pop;
 //pub mod bit;
@@ -115,91 +115,92 @@ pub mod engine;
 
 pub use engine::*;
 
-// pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
+pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
 // pub use bit::{BitSignedMessage,CountSignedMessage};
 
 
-// /// Internal message hash size.  
-// ///
-// /// We choose 256 bits here so that birthday bound attacks cannot
-// /// find messages with the same hash.
-// const MESSAGE_SIZE: usize = 32;
+/// Internal message hash size.  
+///
+/// We choose 256 bits here so that birthday bound attacks cannot
+/// find messages with the same hash.
+const MESSAGE_SIZE: usize = 32;
 
-// /// Internal message hash type.  Short for frequent rehashing
-// /// by `HashMap`, etc.
-// #[derive(Debug,Copy,Clone,Hash,PartialEq,Eq,PartialOrd,Ord)]
-// pub struct Message(pub [u8; MESSAGE_SIZE]);
+/// Internal message hash type.  Short for frequent rehashing
+/// by `HashMap`, etc.
+#[derive(Debug,Copy,Clone,Hash,PartialEq,Eq,PartialOrd,Ord)]
+pub struct Message(pub [u8; MESSAGE_SIZE]);
 
-// impl Message {
-//     pub fn new(context: &'static [u8], message: &[u8]) -> Message {
-//         use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
-//         let mut h = Shake128::default();
-//         h.input(context);
-//         let l = message.len() as u64;
-//         h.input(l.to_le_bytes());
-//         h.input(message);
-//         // let mut t = ::merlin::Transcript::new(context);
-//         // t.append_message(b"", message);
-//         let mut msg = [0u8; MESSAGE_SIZE];
-//         h.xof_result().read(&mut msg[..]);
-//         // t.challenge_bytes(b"", &mut msg);
-//         Message(msg)
-//     }
+impl Message {
+    pub fn new(context: &'static [u8], message: &[u8]) -> Message {
+        use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+        let mut h = Shake128::default();
+        h.input(context);
+        let l = message.len() as u64;
+        h.input(l.to_le_bytes());
+        h.input(message);
+        // let mut t = ::merlin::Transcript::new(context);
+        // t.append_message(b"", message);
+        let mut msg = [0u8; MESSAGE_SIZE];
+        h.xof_result().read(&mut msg[..]);
+        // t.challenge_bytes(b"", &mut msg);
+        Message(msg)
+    }
 
-//     pub fn hash_to_signature_curve<E: EngineBLS>(&self) -> E::SignatureGroup {
-//         E::hash_to_signature_curve(&self.0[..])
-//     }
-// }
+    pub fn hash_to_signature_curve<E: EngineBLS>(&self) -> E::SignatureGroup {
+        E::hash_to_signature_curve(&self.0[..])
+    }
+}
 
-// impl<'a> From<&'a [u8]> for Message {
-//     fn from(x: &[u8]) -> Message { Message::new(b"",x) }     
-// }
+impl<'a> From<&'a [u8]> for Message {
+    fn from(x: &[u8]) -> Message { Message::new(b"",x) }     
+}
 
 
 
-// /// Representation of an aggregated BLS signature.
-// ///
-// /// We implement this trait only for borrows of appropriate structs
-// /// because otherwise we'd need extensive lifetime plumbing here,
-// /// due to the absence of assocaited type constructers (ATCs).
-// /// We shall make `messages_and_publickeys` take `&sefl` and
-// /// remove these limitations in the future once ATCs stabalize,
-// /// thus removing `PKG`.  See [Rust RFC 1598](https://github.com/rust-lang/rfcs/blob/master/text/1598-generic_associated_types.md)
-// /// We shall eventually remove MnPK entirely whenever `-> impl Trait`
-// /// in traits gets stabalized.  See [Rust RFCs 1522, 1951, and 2071](https://github.com/rust-lang/rust/issues/34511
-// pub trait Signed: Sized {
-//     type E: EngineBLS;
+/// Representation of an aggregated BLS signature.
+///
+/// We implement this trait only for borrows of appropriate structs
+/// because otherwise we'd need extensive lifetime plumbing here,
+/// due to the absence of assocaited type constructers (ATCs).
+/// We shall make `messages_and_publickeys` take `&sefl` and
+/// remove these limitations in the future once ATCs stabalize,
+/// thus removing `PKG`.  See [Rust RFC 1598](https://github.com/rust-lang/rfcs/blob/master/text/1598-generic_associated_types.md)
+/// We shall eventually remove MnPK entirely whenever `-> impl Trait`
+/// in traits gets stabalized.  See [Rust RFCs 1522, 1951, and 2071](https://github.com/rust-lang/rust/issues/34511
+pub trait Signed: Sized {
+    type E: EngineBLS;
 
-//     /// Return the aggregated signature 
-//     fn signature(&self) -> Signature<Self::E>;
+    /// Return the aggregated signature 
+    fn signature(&self) -> Signature<Self::E>;
 
-//     type M: Borrow<Message>; // = Message;
-//     type PKG: Borrow<PublicKey<Self::E>>; // = PublicKey<Self::E>;
+    type M: Borrow<Message>; // = Message;
+    type PKG: Borrow<PublicKey<Self::E>>; // = PublicKey<Self::E>;
 
-//     /// Iterator over messages and public key reference pairs.
-//     type PKnM: Iterator<Item = (Self::M,Self::PKG)> + ExactSizeIterator;
-//     // type PKnM<'a>: Iterator<Item = (
-//     //    &'a <<Self as Signed<'a>>::E as EngineBLS>::PublicKeyGroup,
-//     //    &'a Self::M,
-//     // )> + DoubleEndedIterator + ExactSizeIterator + 'a;
+    /// Iterator over messages and public key reference pairs.
+    type PKnM: Iterator<Item = (Self::M,Self::PKG)> + ExactSizeIterator;
+    // type PKnM<'a>: Iterator<Item = (
+    //    &'a <<Self as Signed<'a>>::E as EngineBLS>::PublicKeyGroup,
+    //    &'a Self::M,
+    // )> + DoubleEndedIterator + ExactSizeIterator + 'a;
 
-//     /// Returns an iterator over messages and public key reference for
-//     /// pairings, often only partially aggregated. 
-//     fn messages_and_publickeys(self) -> Self::PKnM;
-//     // fn messages_and_publickeys<'a>(&'s self) -> PKnM<'a>
-//     // -> impl Iterator<Item = (&'a Self::M, &'a Self::E::PublicKeyGroup)> + 'a;
+    /// Returns an iterator over messages and public key reference for
+    /// pairings, often only partially aggregated. 
+    fn messages_and_publickeys(self) -> Self::PKnM;
+    // fn messages_and_publickeys<'a>(&'s self) -> PKnM<'a>
+    // -> impl Iterator<Item = (&'a Self::M, &'a Self::E::PublicKeyGroup)> + 'a;
 
-//     /// Appropriate BLS signature verification for the `Self` type.
-//     ///
-//     /// We use `verify_simple` as a default implementation because
-//     /// it supports unstable `self.messages_and_publickeys()` securely
-//     /// by calling it only once, and does not expect pulic key points
-//     /// to be normalized, but this should usually be replaced by more
-//     /// optimized variants. 
-//     fn verify(self) -> bool {
-//         verifiers::verify_simple(self)
-//     }
-// }
+    /// Appropriate BLS signature verification for the `Self` type.
+    ///
+    /// We use `verify_simple` as a default implementation because
+    /// it supports unstable `self.messages_and_publickeys()` securely
+    /// by calling it only once, and does not expect pulic key points
+    /// to be normalized, but this should usually be replaced by more
+    /// optimized variants. 
+    fn verify(self) -> bool {
+        // verifiers::verify_simple(self)
+	true
+    }
+}
 
 
 
