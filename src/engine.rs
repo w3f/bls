@@ -29,6 +29,7 @@ use pairing::One;
 
 use rand::{Rng, rngs::{StdRng}};
 use rand_core::RngCore;
+
 use zexe_algebra::{bls12_381};
 
 use zexe_algebra::bytes::{FromBytes, ToBytes};
@@ -142,7 +143,7 @@ pub trait EngineBLS {
     /// simplify replacing mid-level routines with optimized variants,
     /// like versions that cache public key preperation or use fewer pairings. 
     fn verify_prepared<'a,I>(
-        signature: &'a Self::SignaturePrepared,
+        signature: Self::SignaturePrepared,
         inputs: I
       ) -> bool
     where
@@ -153,29 +154,14 @@ pub trait EngineBLS {
             Self::SignaturePrepared,
         )>
     {
-        //let g1 = Self::public_key_minus_generator_prepared();
-        Self::final_exponentiation( & Self::miller_loop( inputs
-                                                         //.into_iter().map(|t| t)
-                                                         //.chain( &(*g1.deref().deref(), *signature.deref() ) )
-             // inputs.into_iter().map(|t| t)  // reborrow hack
-             //     .chain( (g1.deref(), signature.deref()) )
-         ) ).unwrap() == <Self::Engine as PairingEngine>::Fqk::one()
+        let lhs: [_;1] = [(Self::public_key_minus_generator_prepared(),signature)];
+        Self::final_exponentiation( & Self::miller_loop(
+            inputs.into_iter().map(|t| t).chain(&lhs)
+	) ).unwrap() == <Self::Engine as PairingEngine>::Fqk::one()
     }
     
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared()
-    -> Cow<'static, Self::PublicKeyPrepared>;
-    // {
-    //      let mut g1_minus_generator = Self::PublicKeyGroup::Affine::prime_subgroup_generator();
-    //     Cow::Owned(-g1_minus_generator)
-    // }
-
-    // /// Abstracting out preparation of the public key without commiting to
-    // /// to prepare for G1 or G2affine (only G1/G2Affine implements negate function);
-    // fn prepare_public_key() -> Cow<'static, Self::PublicKeyPrepared> {
-    //     let mut g1_minus_generator = Self::PublicKeyGroupAffine::one();
-    //     g1_minus_generator.negate()
-    // }
+    fn public_key_minus_generator_prepared() -> Self::PublicKeyPrepared;
         
 }
 
@@ -219,11 +205,6 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
              Self::SignaturePrepared,
         )>
     {
-        // We require an ugly unecessary allocation here because
-        // zcash's pairing library cnsumes an iterator of references
-        // to tuples of references, which always requires 
-        // let i = i.into_iter().map(|t| t)
-        //       .collect::<Vec<(&Self::PublicKeyPrepared,&Self::SignaturePrepared)>>();
         E::miller_loop(i)
     }
 
@@ -236,37 +217,12 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
     }
 
     /// Prepared negative of the generator of the public key curve.
-    ///
-    /// We assume reuse the same few curves aka `pairing::Engine`s,
-    /// so we `Box::leak` the prepared point to return the same `'static`
-    /// reference each time, and relocate these with linear search.
     fn public_key_minus_generator_prepared()
-     -> Cow<'static, Self::PublicKeyPrepared>
+     -> Self::PublicKeyPrepared
     {
-        use std::sync::{Once,Mutex};
-        use std::any::{Any,TypeId};
-
-        static mut CALLED: Option<Mutex<Vec<&'static (dyn Any + Send + Sync + 'static)>>> = None;
-
-        // Remove if Mutex::new ever becomes const fn
-        static START: Once = Once::new();
-        START.call_once(|| unsafe { CALLED = Some(Default::default()); });
-
-        let v : Option<&'static Mutex<Vec<_>>> = unsafe { CALLED.as_ref() };
-        let mut v = v.unwrap().lock().unwrap();
-
-        for g1 in v.deref() {
-            if let Some(g1_ref) = g1.downcast_ref() { return Cow::Borrowed( g1_ref ); }
-        }
-
         let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
-        let g1 = Box::new( (-g1_minus_generator).into() );
-        let g1: &'static Self::PublicKeyPrepared
-         = Box::<_>::leak(g1);
-        v.push(g1 as &'static (dyn Any + Send + Sync + 'static));
-        Cow::Borrowed( g1 )
+        (-g1_minus_generator).into()
     }
-
 }
 
 
