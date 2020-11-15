@@ -14,7 +14,7 @@
 //!
 //! We imagine this simplification helps focus on more important
 //! optimizations, like placing `batch_normalization` calls well.
-//! We could exploit `CurveProjective::add_assign_mixed` function
+//! We could exploit `CurveProjective: += _mixed` function
 //! if we had seperate types for affine points, but if doing so 
 //! improved performance enough then we instead suggest tweaking
 //! `CurveProjective::add_mixed` to test for normalized points.
@@ -92,7 +92,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
         let mut s : E::SignatureGroup = message.hash_to_signature_curve::<E>();
 	let e_scalar : E::Scalar = self.0;
 	let sign_scalar : <E::SignatureGroup as pairing::ProjectiveCurve>::ScalarField = self.0;
-        s *= e_scalar;
+        s *= self.0;
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
         Signature(s)
@@ -121,7 +121,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
         PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator().mul(self.0) )
         // let mut g = <E::PublicKeyGroup as CurveProjective>::one();
-        // g.mul_assign(self.0);
+        // g *= self.0;
         // PublicKey(p)
     }
 }
@@ -214,16 +214,16 @@ impl<E: EngineBLS> SecretKey<E> {
         let mut s = rng.gen::<E::SignatureGroup>();
         self.old_unsigned = s;
         self.old_signed = s;
-        self.old_signed.mul_assign(self.key[0]);
-        s.mul_assign(self.key[1]);
-        self.old_signed.add_assign(&s);
+        self.old_signed *= self.key[0];
+        s *= self.key[1];
+        self.old_signed += &s;
     }
 
     /// Create a representative usable for operations lacking 
     /// side channel protections.  
     pub fn into_vartime(&self) -> SecretKeyVT<E> {
         let mut secret = self.key[0].clone();
-        secret.add_assign(&self.key[1]);
+        secret += &self.key[1];
         SecretKeyVT(secret)
     }
 
@@ -237,8 +237,8 @@ impl<E: EngineBLS> SecretKey<E> {
     pub fn resplit<R: Rng>(&mut self, mut rng: R) {
         // resplit_with(|| Ok(self), rng).unwrap();
         let x = E::generate(&mut rng);
-        self.key[0].add_assign(&x);
-        self.key[1].sub_assign(&x);
+        self.key[0] += &x;
+        self.key[1] -= &x;
     }
 
     /// Sign without doing the key resplit mutation that provides side channel protection.
@@ -248,15 +248,15 @@ impl<E: EngineBLS> SecretKey<E> {
     /// secret key.
     pub fn sign_once(&mut self, message: Message) -> Signature<E> {
         let mut z = message.hash_to_signature_curve::<E>();
-        z.sub_assign(&self.old_unsigned);
+        z -= &self.old_unsigned;
         self.old_unsigned = z.clone();
         let mut t = z.clone();
-        t.mul_assign(self.key[0]);
-        z.mul_assign(self.key[1]);
-        z.add_assign(&t);
+        t *= self.key[0];
+        z *= self.key[1];
+        z += &t;
         let old_signed = self.old_signed.clone();
         self.old_signed = z.clone();
-        z.add_assign(&old_signed);
+        z += &old_signed;
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
         Signature(z)
@@ -275,15 +275,15 @@ impl<E: EngineBLS> SecretKey<E> {
     pub fn into_public(&self) -> PublicKey<E> {
         let generator = <E::PublicKeyGroup as CurveProjective>::Affine::one();
         let mut publickey = generator.mul(self.key[0]);
-        publickey.add_assign( & generator.mul(self.key[1]) );
+        publickey += & generator.mul(self.key[1]);
         PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
         /*
         let mut x = <E::PublicKeyGroup as CurveProjective>::one();
-        x.mul_assign(self.0);
+        x *= self.0;
         let y = <E::PublicKeyGroup as CurveProjective>::one();
-        y.mul_assign(self.1);
-        x.add_assign(&y);
+        y *= self.1;
+        x += &y;
         PublicKey(x)
         */
     }
