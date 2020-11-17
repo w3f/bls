@@ -23,7 +23,8 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use pairing::{Field, PrimeField}; // ScalarEngine, SqrtField
+use pairing::{Field, PrimeField, UniformRand}; // ScalarEngine, SqrtField
+use pairing::biginteger::{BigInteger}; // ScalarEngine, SqrtField
 use pairing::fields::{SquareRootField};
 use pairing::{One, Zero};
 
@@ -31,6 +32,8 @@ use pairing::{One, Zero};
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
 use pairing::curves::PairingEngine as  Engine;
+
+use pairing::serialize::{CanonicalSerialize};
 
 use rand::{Rng, thread_rng, SeedableRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
@@ -63,8 +66,8 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     pub fn to_repr(&self) -> <E::Scalar as PrimeField>::BigInt {
         self.0.into_repr()
     }
-    pub fn write<W: io::Write>(&self, writer: W) -> io::Result<()> {
-        self.to_repr().write_le(writer)
+    pub fn write<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
+        self.to_repr().write_le(&mut writer)
     }
 
     /// Convert our secret key from its representation type, which
@@ -72,11 +75,11 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     /// We suggest `ff::PrimeFieldRepr::read_le` for deserialization,
     /// invoked via our `read` method, which requires a seperate call.
     pub fn from_repr(repr: <E::Scalar as PrimeField>::BigInt) -> Option<Self> {
-        Ok(SecretKeyVT(<E::Scalar as PrimeField>::from_repr(repr) ?))
+        Some(SecretKeyVT(<E::Scalar as PrimeField>::from_repr(repr) ?))
     }
-    pub fn read<R: io::Read>(reader: R) -> io::Result<<E::Scalar as PrimeField>::BigInt> {
+    pub fn read<R: io::Read>(mut reader: R) -> io::Result<<E::Scalar as PrimeField>::BigInt> {
         let mut repr = <E::Scalar as PrimeField>::BigInt::default();
-        repr.read_le(reader) ?;
+        repr.read_le(&mut reader) ?;
         Ok(repr)
     }
 
@@ -90,8 +93,6 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     /// Sign without side channel protections from key mutation.
     pub fn sign(&self, message: Message) -> Signature<E> {
         let mut s : E::SignatureGroup = message.hash_to_signature_curve::<E>();
-	let e_scalar : E::Scalar = self.0;
-	let sign_scalar : <E::SignatureGroup as pairing::ProjectiveCurve>::ScalarField = self.0;
         s *= self.0;
         // s.normalize();   // VRFs are faster if we only normalize once, but no normalize method exists.
         // E::SignatureGroup::batch_normalization(&mut [&mut s]);  
@@ -211,7 +212,7 @@ impl<E: EngineBLS> SecretKey<E> {
     /// nothing, but each individual invokation costs as much
     /// as signing.
     pub fn init_point_mutation<R: Rng>(&mut self, mut rng: R) {
-        let mut s = rng.gen::<E::SignatureGroup>();
+        let mut s = <E::SignatureGroup as UniformRand>::rand(&mut rng);
         self.old_unsigned = s;
         self.old_signed = s;
         self.old_signed *= self.key[0];
@@ -273,7 +274,7 @@ impl<E: EngineBLS> SecretKey<E> {
     /// We do not resplit for side channel protections here since
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
-        let generator = <E::PublicKeyGroup as CurveProjective>::Affine::one();
+        let generator = <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
         let mut publickey = generator.mul(self.key[0]);
         publickey += & generator.mul(self.key[1]);
         PublicKey(publickey)
@@ -451,18 +452,18 @@ impl<E: EngineBLS> Signature<E> {
 
     /// Verify a single BLS signature
     pub fn verify(&self, message: Message, publickey: &PublicKey<E>) -> bool {
-        let publickey = publickey.0.into_affine().prepare();
+        let publickey = E::prepare_public_key(publickey.0);
         // TODO: Bentchmark these two variants
         // Variant 1.  Do not batch any normalizations
-        let message = message.hash_to_signature_curve::<E>().into_affine().prepare();
-        let signature = self.0.into_affine().prepare();
+        let message = E::prepare_signature(message.hash_to_signature_curve::<E>());
+        let signature = E::prepare_signature(self.0);
         // Variant 2.  Batch signature curve normalizations
         //   let mut s = [E::hash_to_signature_curve(message), signature.0];
         //   E::SignatureCurve::batch_normalization(&s);
         //   let message = s[0].into_affine().prepare();
         //   let signature = s[1].into_affine().prepare();
         // TODO: Compare benchmarks on variants
-        E::verify_prepared( & signature, once((&publickey,&message)) )
+        E::verify_prepared( signature, once( & (publickey,message)) )
     }
 }
 
@@ -665,7 +666,11 @@ impl<E: EngineBLS> SignedMessage<E> {
         h.input(b"msg");
         h.input(&self.message.0[..]);
         h.input(b"out");
-        h.input(self.signature.0.into_affine().into_uncompressed().as_ref());
+        let affine_signature = self.signature.0.into_affine();
+        let mut serialized_signature = vec![0; affine_signature.uncompressed_size()];
+        affine_signature.serialize_uncompressed(&mut serialized_signature[..]).unwrap();
+
+        h.input(& serialized_signature);
     }
 
     /// Raw bytes output from a BLS signature regarded as a VRF.
@@ -705,16 +710,8 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// ["Ouroboros Praos: An adaptively-secure, semi-synchronous proof-of-stake blockchain"](https://eprint.iacr.org/2017/573.pdf)
     /// by Bernardo David, Peter Gazi, Aggelos Kiayias, and Alexander Russell.
     pub fn make_chacharng(&self, context: &[u8]) -> ChaCha8Rng {
-        // self.make_rng::<ChaChaRng>(context)
-        // TODO: Remove this ugly hack whenever rand gets updated to 0.5 or later
         let bytes = self.make_bytes::<[u8;32]>(context);
-        let mut words = [0u32; 8];
-        for (w,bs) in words.iter_mut().zip(bytes.chunks(4)) {
-            let mut b = [0u8; 4];
-            b.copy_from_slice(bs);
-            *w = u32::from_le_bytes(b);
-        }
-        ChaCha8Rng::from_seed(&words)
+        ChaCha8Rng::from_seed(bytes)
     }
 }
 
