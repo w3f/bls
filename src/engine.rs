@@ -175,13 +175,19 @@ pub trait EngineBLS {
     /// implemented by the type of BLS system implementing the engine
     /// by calling either prepare_g1 or prepare_g2 based on which group
     /// is used by the signature system to host the public key
-    fn prepare_public_key(g: impl Into<Self::PublicKeyGroupAffine>) -> Self::PublicKeyPrepared;
+    fn prepare_public_key(g: impl Into<Self::PublicKeyGroupAffine>) -> Self::PublicKeyPrepared {
+        let g_affine: Self::PublicKeyGroupAffine = g.into();
+        Self::PublicKeyPrepared::from(g_affine)
+    }
 
     /// Process the signature to be use in pairing. This has to be
     /// implemented by the type of BLS system implementing the engine
     /// by calling either prepare_g1 or prepare_g2 based on which group
     /// is used by the signature system to host the public key
-    fn prepare_signature(g: impl Into<Self::SignatureGroupAffine>) -> Self::SignaturePrepared;
+    fn prepare_signature(g: impl Into<Self::SignatureGroupAffine>) -> Self::SignaturePrepared {
+	let g_affine: Self::SignatureGroupAffine = g.into();
+        Self::SignaturePrepared::from(g_affine)
+    }
 
 }
 
@@ -243,22 +249,6 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
         let mut g1_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
         (-g1_minus_generator).into()
     }
-
-    /// process public key as a G1 element
-    fn prepare_public_key(g: impl Into<Self::PublicKeyGroupAffine>) -> Self::PublicKeyPrepared {
-        //i couldn't figure out how to make rust accept calling E::prepare_g1 so I had to
-        //basically reimplement it
-        let g1: E::G1Affine = g.into();
-        E::G1Prepared::from(g1)
-    }
-        
-
-    /// Process the signature g as G2 element
-    fn prepare_signature(g: impl Into<Self::SignatureGroupAffine>) -> Self::SignaturePrepared {
-        let g2: E::G2Affine = g.into();
-        E::G2Prepared::from(g2)
-    }
-
 }
 
 

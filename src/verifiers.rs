@@ -33,15 +33,15 @@ pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveProjecti
 
 /// Simple unoptimized BLS signature verification.  Useful for testing.
 pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
-    let signature = s.signature().0.into_affine().prepare();
+    let signature = S::E::prepare_signature(s.signature().0);
     let prepared = s.messages_and_publickeys()
         .map(|(message,public_key)| {
-            (public_key.borrow().0.into_affine().prepare(),
-             message.borrow().hash_to_signature_curve::<S::E>().into_affine().prepare())
+            (S::E::prepare_public_key(public_key.borrow().0),
+             S::E::prepare_signature(message.borrow().hash_to_signature_curve::<S::E>()))
         }).collect::<Vec<(_,_)>>();
     S::E::verify_prepared(
-        & signature,
-        prepared.iter().map(|(m,pk)| (m,pk))
+        signature,
+        prepared.iter()
     )
 }
 
@@ -69,11 +69,11 @@ pub fn verify_simple<S: Signed>(s: S) -> bool {
     <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(gpk.as_mut_slice());
     gms.push(signature);
     <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(gms.as_mut_slice());
-    let signature = gms.pop().unwrap().into_affine().prepare();
+    let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(gms.pop().unwrap());
     let prepared = gpk.iter().zip(gms)
-        .map(|(pk,m)| { (pk.into_affine().prepare(), m.into_affine().prepare()) })
+        .map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(pk.into_affine()), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
         .collect::<Vec<(_,_)>>();
-    S::E::verify_prepared( &signature, prepared.iter().map(|(m,pk)| (m,pk)) )
+    S::E::verify_prepared( signature, prepared.iter())
 }
 
 
