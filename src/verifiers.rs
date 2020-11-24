@@ -117,75 +117,43 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // TODO:  Impl PartialEq, Eq, Hash for pairing::EncodedPoint
     // to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
     type AA<E> = (PublicKeyAffine<E>, SignatureProjective<E>);
-    let mut pk_uncompressed = vec![0;  publickeys[0].into_affine().uncompressed_size()];
     let mut pks_n_ms = HashMap::with_capacity(l);
     for (pk,m) in publickeys.drain(..)
-                            .map(|pk| pk.into_affine())
+        .map(|pk| pk.into_affine() )
                             .zip(messages.drain(..)) 
     {
-        
+        let mut pk_uncompressed = vec![0;  pk.uncompressed_size()];        
         pk.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
         pks_n_ms.entry(pk_uncompressed)
-                .and_modify(|(_pk0,m0): &mut AA<S::E>| *m0 += m )
+            .and_modify(|(_pk0,m0):  &mut AA<S::E>| {*m0 += m;} )
                 .or_insert((pk,m));
     }
 
     let mut publickeys = Vec::with_capacity(l);
     for (_,(pk,m)) in pks_n_ms.drain() {
         messages.push(m);
-        publickeys.push(<<S as Signed>::E as EngineBLS>::prepare_public_key(pk));
+        publickeys.push(pk.clone());
     }
 
     // We finally normalize the messages and signature
 
     messages.push(signature);
     <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(messages.as_mut_slice());
-    let signature = messages.pop().unwrap().into_affine().prepare();
-    // TODO: Assess if we could cache normalized message hashes anyplace
-    // using interior mutability, but probably this does not work well
-    // with our optimization of collecting messages with thesame signer.
-
-    // And verify the aggregate signature.
-    let messages = messages.iter().map(|m| <<S as Signed>::E as EngineBLS>::prepare_signature(m.into_affine())).collect::<Vec<_>>();
-    let prepared = publickeys.iter().zip(&messages);
-    S::E::verify_prepared( &signature, prepared )
-}
-
-
-/// Simple universal BLS signature verification
-///
-/// We support an unstable `Signed::messages_and_publickeys()`
-/// securely by calling it only once and batch normalizing all
-/// points, as do most other verification routines here.
-/// We do no optimizations that reduce the number of pairings
-/// by combining repeated messages or signers. 
-pub fn verify_simple<S: Signed>(s: S) -> bool {
-    let signature = s.signature().0;
-    // We could write this more idiomatically using iterator adaptors,
-    // and avoiding an unecessary allocation for publickeys, but only
-    // by calling self.messages_and_publickeys() repeatedly.
-    let itr = s.messages_and_publickeys();
-    let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
-    let mut gpk = Vec::with_capacity(l);
-    let mut gms = Vec::with_capacity(l+1);
-    for (message,publickey) in itr {
-        gpk.push( publickey.borrow().0.clone() );
-        gms.push( message.borrow().hash_to_signature_curve::<S::E>() );
-    }
-    <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(gpk.as_mut_slice());
-    gms.push(signature);
-    <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(gms.as_mut_slice());
     let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(messages.pop().unwrap().into_affine());
     // TODO: Assess if we could cache normalized message hashes anyplace
     // using interior mutability, but probably this does not work well
     // with our optimization of collecting messages with thesame signer.
 
     // And verify the aggregate signature.
-    let messages = messages.iter().map(|m| m.into_affine().prepare()).collect::<Vec<_>>();
-    let prepared = publickeys.iter().zip(&messages);
-    S::E::verify_prepared( &signature, prepared )
-}
+    let  prepared = publickeys.iter().zip(messages).map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(*pk), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
+        .collect::<Vec<(_,_)>>();
 
+    S::E::verify_prepared( signature, prepared.iter() )
+
+    //let prepared = publickeys.iter().zip(&messages);
+    //S::E::verify_prepared( &signature, prepared )
+
+}
 
 /*
 
