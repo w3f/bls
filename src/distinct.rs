@@ -26,6 +26,7 @@ use std::collections::HashMap;
 
 //use pairing::{CurveProjective}; // CurveAffine, Engine
 use pairing::curves::ProjectiveCurve as CurveProjective;
+use pairing::{One, Zero};
 
 use super::*;
 use super::single::SignedMessage;
@@ -120,7 +121,7 @@ impl<E: EngineBLS> DistinctMessages<E> {
     ///
     /// Useful in constructing an aggregate signature from this type.
     pub fn add_signature(&mut self, signature: &Signature<E>) {
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
     }
 
     /// Add only a `Message` and `PublicKey<E>` to our internal data.

@@ -16,6 +16,7 @@ use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFi
 //use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
+use pairing::{One, Zero};
 
 use rand::{Rng, thread_rng};
 use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
