@@ -252,53 +252,62 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
 }
 
 
-// /// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
-// ///
-// /// We recommend gainst this variant by default because verifiers
-// /// always perform `O(signers)` additions on the `PublicKeyGroup`,
-// /// or worse 128 bit scalar multiplications with delinearization. 
-// /// Yet, there are specific use cases where this variant performs
-// /// better.  We swapy two group roles relative to zcash here.
-// #[derive(Default)]
-// pub struct TinyBLS<E: PairingEngine>(pub E);
+/// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
+///
+/// We recommend gainst this variant by default because verifiers
+/// always perform `O(signers)` additions on the `PublicKeyGroup`,
+/// or worse 128 bit scalar multiplications with delinearization. 
+/// Yet, there are specific use cases where this variant performs
+/// better.  We swapy two group roles relative to zcash here.
+#[derive(Default)]
+pub struct TinyBLS<E: PairingEngine>(pub E);
 
-// impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
-//     type Engine = E;
-//     type Scalar = <Self::Engine as PairingEngine>::Fr;
+impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
+    type Engine = E;
+    type Scalar = <Self::Engine as PairingEngine>::Fr;
 
-//     type SignatureGroup = E::G1Projective;
-//     type SignatureGroupAffine = E::G1Affine;
-//     type SignaturePrepared = E::G1Prepared;
-//     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fq;
+    type SignatureGroup = E::G1Projective;
+    type SignatureGroupAffine = E::G1Affine;
+    type SignaturePrepared = E::G1Prepared;
+    type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fq;
 
-//     type PublicKeyGroup = E::G2Projective;
-//     type PublicKeyGroupAffine = E::G2Affine;
-//     type PublicKeyPrepared = E::G2Prepared;
-//     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+    type PublicKeyGroup = E::G2Projective;
+    type PublicKeyGroupAffine = E::G2Affine;
+    type PublicKeyPrepared = E::G2Prepared;
+    type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
 
-//     fn miller_loop<'a,I>(i: I) -> E::Fqk
-//     where
-//         I: IntoIterator<Item = (
-//             &'a Self::PublicKeyPrepared,
-//             &'a Self::SignaturePrepared,
-//         )>,
-//     {
-//         // We require an ugly unecessary allocation here because
-//         // zcash's pairing library cnsumes an iterator of references
-//         // to tuples of references, which always requires 
-//         let i = i.into_iter().map(|(x,y)| (y,x))
-//               .collect::<Vec<(&Self::SignatureGroupPrepared, &Self::PublicKeyGroupPrepared)>>();
-//         E::miller_loop(&i)
-//     }
+    fn miller_loop<'a,I>(i: I) -> E::Fqk
+    where
+        I: IntoIterator<Item = &'a(
+            Self::PublicKeyPrepared,
+            Self::SignaturePrepared,
+        )>,
+    {
+        // We require an ugly unecessary allocation here because
+        // zcash's pairing library cnsumes an iterator of references
+        // to tuples of references, which always requires 
+        let i = i.into_iter().map(|(x,y)| (y.clone(),x.clone()))
+              .collect::<Vec<(Self::SignaturePrepared, Self::PublicKeyPrepared)>>();
+        E::miller_loop(&i)
+    }
 
-//     fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
-//     where
-//         G1: Into<E::G1Affine>,
-//         G2: Into<E::G2Affine>,
-//     {
-//         E::pairing(q,p)
-//     }
-// }
+    fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
+    where
+        G1: Into<E::G1Affine>,
+        G2: Into<E::G2Affine>,
+    {
+        E::pairing(q,p)
+    }
+
+    /// Prepared negative of the generator of the public key curve.
+    fn public_key_minus_generator_prepared()
+     -> Self::PublicKeyPrepared
+    {
+        let mut g2_minus_generator = <Self::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
+        (-g2_minus_generator).into()
+    }
+
+}
 
 
 // /// Rogue key attack defence by proof-of-possession
