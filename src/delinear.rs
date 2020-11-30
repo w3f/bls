@@ -12,11 +12,14 @@
 //! but if you need delinearized aggregation then you should consider
 //! adding a more finely tuned scheme.
 
-use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
+//use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
 //use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
 use pairing::{One, Zero};
+use pairing::PrimeField;
+use pairing::CanonicalSerialize;
+use pairing::BigInteger;
 
 use rand::{Rng, thread_rng};
 use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
@@ -103,13 +106,16 @@ impl<E: EngineBLS> Delinearized<E> {
     /// our return type here changes.
     pub fn mask(&self, publickey: &PublicKey<E>) -> E::Scalar {
         let mut t = self.key.clone();
-        t.input(publickey.0.into_affine().into_uncompressed().as_ref());
+        let pk_affine = publickey.0.into_affine();
+        let mut pk_uncompressed = vec![0;  pk_affine.uncompressed_size()];        
+        pk_affine.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
+        t.input(pk_uncompressed);
         let mut b = [0u8; 16];
         t.xof_result().read(&mut b[..]);
         let (x,y) = array_refs!(&b,8,8);
-        let mut x: <E::Scalar as PrimeField>::Repr = u64::from_le_bytes(*x).into();
-        let y: <E::Scalar as PrimeField>::Repr = u64::from_le_bytes(*y).into();
-        x.shl(64);
+        let mut x: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*x).into();
+        let y: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*y).into();
+        x.muln(64);
         x.add_nocarry(&y);
         <E::Scalar as PrimeField>::from_repr(x).unwrap()
     }
@@ -119,7 +125,7 @@ impl<E: EngineBLS> Delinearized<E> {
     ///
     /// Useful for constructing an aggregate signature.
     pub fn add_delinearized_signature(&mut self, signature: &Signature<E>) {
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += signature.0;
     }
 
     /// Add only a `Message` and `PublicKey<E>` to our internal data,
@@ -137,9 +143,9 @@ impl<E: EngineBLS> Delinearized<E> {
         // some `CurveProjective` method `fn mul_128(&self, blinding: u128)`.
         // Or even expose the `CurveAffine::mul_bits` method.
         // TODO: Is using affine here actually faster?
-        publickey.0.mul_assign(mask);
+        publickey.0 *= mask;
         self.messages_n_publickeys.entry(*message)
-            .and_modify(|pk0| pk0.0.add_assign(&publickey.0) )
+            .and_modify(|pk0| pk0.0 += publickey.0)
             .or_insert(publickey);
         mask
     }
@@ -149,7 +155,7 @@ impl<E: EngineBLS> Delinearized<E> {
     {
         let mut signature = signed.signature;
         let mask = self.add_message_n_publickey(&signed.message,signed.publickey);
-        signature.0.mul_assign(mask);
+        signature.0 *= mask;
         self.add_delinearized_signature(&signature);
     }
 
@@ -175,10 +181,10 @@ impl<E: EngineBLS> Delinearized<E> {
         // if ! self.agreement(other) { return Err(()); }
         for (message,publickey) in other.messages_n_publickeys.iter() {
             self.messages_n_publickeys.entry(*message)
-                .and_modify(|pk0| pk0.0.add_assign(&publickey.0) )
+                .and_modify(|pk0| pk0.0 += publickey.0 )
                 .or_insert(*publickey);
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += other.signature.0;
         // Ok(())
     }
 }

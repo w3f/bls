@@ -109,7 +109,7 @@ pub mod single;
 pub mod distinct;
 pub mod pop;
 pub mod bit;
-//pub mod delinear;
+pub mod delinear;
 pub mod verifiers;
 
 pub use engine::*;
