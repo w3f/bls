@@ -33,7 +33,9 @@ use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
 use pairing::curves::PairingEngine as  Engine;
 
-use pairing::serialize::{CanonicalSerialize};
+use pairing::serialize::{CanonicalSerialize, SerializationError};
+use zexe_algebra::bytes::{FromBytes, ToBytes};
+
 
 use rand::{Rng, thread_rng, SeedableRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
@@ -280,9 +282,9 @@ impl<E: EngineBLS> SecretKey<E> {
         PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
         /*
-        let mut x = <E::PublicKeyGroup as CurveProjective>::one();
+        let mut x = <E::PublicKeyGroup as CurveProjective>::prime_subgroup_generator();
         x *= self.0;
-        let y = <E::PublicKeyGroup as CurveProjective>::one();
+        let y = <E::PublicKeyGroup as CurveProjective>::prime_subgroup_generator();
         y *= self.1;
         x += &y;
         PublicKey(x)
@@ -344,97 +346,96 @@ fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDeco
     }
 }
 
-// macro_rules! compression {
-//     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
+macro_rules! compression {
+    ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
-// impl<E> $wrapper<E> where E: $se {
-//     /// Convert our signature or public key type to its compressed form.
-//     ///
-//     /// These compressed forms are wraper types on either a `[u8; 48]` 
-//     /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
-//     /// read access with `AsRef<[u8]>`.
-//     pub fn compress(&self) -> <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed {
-//         self.0.into_affine().into_compressed()
-//     }
-// }
+impl<E> $wrapper<E> where E: $se {
+    /// Convert our signature or public key type to its compressed form.
+    ///
+    /// These compressed forms are wraper types on either a `[u8; 48]` 
+    /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
+    /// read access with `AsRef<[u8]>`.
+    pub fn compress(&self) -> <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed {
+        self.0.into_affine().into_compressed()
+    }
+}
 
-// impl<E> $wrapper<E> where E: $de {
-//     /// Decompress our signature or public key type from its compressed form.
-//     ///
-//     /// These compressed forms are wraper types on either a `[u8; 48]` 
-//     /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
-//     /// creation and write access with `pairing::EncodedPoint::empty()`
-//     /// and `AsMef<[u8]>`, respectively.
-//     pub fn decompress(compressed: <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalSerialize>::Compressed) -> Result<Self,GroupDecodingError> {
-//         Ok($wrapper(compressed.into_affine()?.into_projective()))
-//     }
+impl<E> $wrapper<E> where E: $de {
+    /// Decompress our signature or public key type from its compressed form.
+    ///
+    /// These compressed forms are wraper types on either a `[u8; 48]` 
+    /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
+    /// creation and write access with `pairing::EncodedPoint::empty()`
+    /// and `AsMef<[u8]>`, respectively.
+    pub fn decompress(compressed: <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed) -> Result<Self,GroupDecodingError> {
+        Ok($wrapper(compressed.into_affine()?.into_projective()))
+    }
 
-//     pub fn decompress_from_slice(slice: &[u8]) -> Result<Self,GroupDecodingError> {
-//         let mut compressed = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::empty();
-//         if slice.len() != compressed.as_mut().len() {
-//             // We should ideally return our own error here, but this seems acceptable for now.
-//             return Err(GroupDecodingError::UnexpectedInformation);
-//         } // <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::size() 
-//         compressed.as_mut().copy_from_slice(slice);
-//         $wrapper::<E>::decompress(compressed)
-//     }
-// }
+    pub fn decompress_from_slice(slice: &[u8]) -> Result<Self,GroupDecodingError> {
+        let mut compressed = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::empty();
+        if slice.len() != compressed.as_mut().len() {
+            // We should ideally return our own error here, but this seems acceptable for now.
+            return Err(GroupDecodingError::UnexpectedInformation);
+        } // <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::size() 
+        compressed.as_mut().copy_from_slice(slice);
+        $wrapper::<E>::decompress(compressed)
+    }
+}
 
-// #[cfg(feature = "serde")]
-// impl<E> ::serde::Serialize for $wrapper<E> where E: $se {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: ::serde::Serializer {
-//         serializer.serialize_bytes(self.compress().as_ref())
-//     }
-// }
+#[cfg(feature = "serde")]
+impl<E> ::serde::Serialize for $wrapper<E> where E: $se {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: ::serde::Serializer {
+        serializer.serialize_bytes(self.compress().as_ref())
+    }
+}
 
-// #[cfg(feature = "serde")]
-// impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
-//         use std::fmt;
-//         use std::marker::PhantomData;
+#[cfg(feature = "serde")]
+impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
+        use std::fmt;
+        use std::marker::PhantomData;
 
-//         struct MyVisitor<EE: $de>(PhantomData<EE>);
+        struct MyVisitor<EE: $de>(PhantomData<EE>);
 
-//         impl<'d,EE: $de> ::serde::de::Visitor<'d> for MyVisitor<EE> {
-//             type Value = $wrapper<EE>;
+        impl<'d,EE: $de> ::serde::de::Visitor<'d> for MyVisitor<EE> {
+            type Value = $wrapper<EE>;
 
-//             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-//                 formatter.write_str(Self::Value::DESCRIPTION)
-//             }
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(Self::Value::DESCRIPTION)
+            }
 
-//             fn visit_bytes<ERR>(self, bytes: &[u8]) -> Result<$wrapper<EE>, ERR> where ERR: ::serde::de::Error {
-//                 $wrapper::<EE>::decompress_from_slice(bytes)
-//                 .map_err(serde_error_from_group_decoding_error)
-//             }
-//         }
-//         deserializer.deserialize_bytes(MyVisitor(PhantomData))
-//     }
-// }
+            fn visit_bytes<ERR>(self, bytes: &[u8]) -> Result<$wrapper<EE>, ERR> where ERR: ::serde::de::Error {
+                $wrapper::<EE>::decompress_from_slice(bytes)
+                .map_err(serde_error_from_group_decoding_error)
+            }
+        }
+        deserializer.deserialize_bytes(MyVisitor(PhantomData))
+    }
+}
 
-//     }
-// }  // macro_rules!
+    }
+}  // macro_rules!
 
 
-// macro_rules! zbls_serialization {
-//     ($wrapper:tt,$orientation:tt,$size:expr) => {
+macro_rules! zbls_serialization {
+    ($wrapper:tt,$orientation:tt,$size:expr) => {
 
-// impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12>> {
-//     pub fn to_bytes(&self) -> [u8; $size] {
-//         let mut bytes = [0u8; $size];
-//         bytes.copy_from_slice(self.compress().as_ref());
-//         bytes
-//     }
+impl $wrapper<$orientation<::pairing::bls12_381::Bls12>> {
+    pub fn to_bytes(&self) -> [u8; $size] {
+        let mut bytes = [0u8; $size];
+        bytes.copy_from_slice(self.compress().as_ref());
+        bytes
+    }
 
-//     pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,GroupDecodingError> {
-//         $wrapper::<$orientation<::zexe_algebra::curves::bls12>>::decompress_from_slice(&bytes[..])
-//     }
-// }
+    pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,GroupDecodingError> {
+        $wrapper::<$orientation<::pairing::bls12_381::Bls12>>::decompress_from_slice(&bytes[..])
+    }
+}
 
-//     }
-// }  // macro_rules!
+    }
+}  // macro_rules!
 
 // //////// END MACROS //////// //
-
 
 /// Detached BLS Signature
 #[derive(Debug)]
@@ -443,9 +444,9 @@ pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
-//compression!(Signature,SignatureGroup,EngineBLS,EngineBLS);
-//zbls_serialization!(Signature,UsualBLS,96);
-//zbls_serialization!(Signature,TinyBLS,48);
+compression!(Signature,SignatureGroup,EngineBLS,EngineBLS);
+zbls_serialization!(Signature,UsualBLS,96);
+zbls_serialization!(Signature,TinyBLS,48);
 
 impl<E: EngineBLS> Signature<E> {
     const DESCRIPTION : &'static str = "A BLS signature";
@@ -481,9 +482,9 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
-// compression!(PublicKey,PublicKeyGroup,UnmutatedKeys,DeserializePublicKey);
-// zbls_serialization!(PublicKey,UsualBLS,48);
-// zbls_serialization!(PublicKey,TinyBLS,96);
+compression!(PublicKey,PublicKeyGroup,UnmutatedKeys,DeserializePublicKey);
+zbls_serialization!(PublicKey,UsualBLS,48);
+zbls_serialization!(PublicKey,TinyBLS,96);
 
 impl<E: EngineBLS> PublicKey<E> {
     const DESCRIPTION : &'static str = "A BLS signature";
@@ -647,7 +648,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 impl<E: EngineBLS> SignedMessage<E> {
     #[cfg(test)]
     fn verify_slow(&self) -> bool {
-        let g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::one();
+        let g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }
@@ -728,7 +729,7 @@ mod tests {
         SignedMessage { message, publickey, signature }
     }
 
-    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12>;
+    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12_381>;
 
     fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
         let SignedMessage { message, publickey, signature } = x;

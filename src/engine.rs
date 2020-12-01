@@ -19,7 +19,6 @@
 use std::borrow::{Borrow,Cow};
 use std::ops::{Deref, MulAssign};
     
-//use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
 use pairing::fields::{Field, PrimeField, SquareRootField};
 use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
@@ -195,7 +194,7 @@ pub trait EngineBLS {
 pub type ZBLS = UsualBLS<::zexe_algebra::bls12_381::Bls12_381>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-// pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});
+pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});
 
 /// Usual BLS variant with tiny 48 byte public keys and 96 byte signatures.
 ///
@@ -287,7 +286,7 @@ impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
         // zcash's pairing library cnsumes an iterator of references
         // to tuples of references, which always requires 
         let i = i.into_iter().map(|(x,y)| (y.clone(),x.clone()))
-              .collect::<Vec<(Self::SignaturePrepared, Self::PublicKeyPrepared)>>();
+              .collect::<Vec<(_, _)>>();
         E::miller_loop(&i)
     }
 
@@ -354,17 +353,17 @@ impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
 /// `delinearize` before signing or verifying.
 pub trait UnmutatedKeys {} //: EngineBLS {}
 
-// impl<E: PairingEngine> UnmutatedKeys for TinyBLS<E> {}
+impl<E: PairingEngine> UnmutatedKeys for TinyBLS<E> {}
 impl<E: PairingEngine> UnmutatedKeys for UsualBLS<E> {}
-// //impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
+// impl<E: EngineBLS> UnmutatedKeys for PoP<E> {}
 
-// /// Any `EngineBLS` whose keys can be trivially deserlialized.
-// /// 
-// /// We disallow deserlialization for proof-of-possession, so that
-// /// developers must call `i_have_checked_this_proof_of_possession`.
-// pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
+/// Any `EngineBLS` whose keys can be trivially deserlialized.
+/// 
+/// We disallow deserlialization for proof-of-possession, so that
+/// developers must call `i_have_checked_this_proof_of_possession`.
+pub trait DeserializePublicKey : EngineBLS+UnmutatedKeys {}
 
-// impl<E: PairingEngine> DeserializePublicKey for TinyBLS<E> {}
-//impl<E: PairingEngine> DeserializePublicKey for UsualBLS<E> {}
+impl<E: PairingEngine> DeserializePublicKey for TinyBLS<E> {}
+impl<E: PairingEngine> DeserializePublicKey for UsualBLS<E> {}
 
 
