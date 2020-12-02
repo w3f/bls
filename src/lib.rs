@@ -111,6 +111,7 @@ pub mod pop;
 pub mod bit;
 pub mod delinear;
 pub mod verifiers;
+pub mod encoding;
 
 pub use engine::*;
 
