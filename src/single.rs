@@ -36,6 +36,7 @@ use pairing::curves::PairingEngine as  Engine;
 use pairing::serialize::{CanonicalSerialize, CanonicalDeserialize, SerializationError};
 use zexe_algebra::bytes::{FromBytes, ToBytes};
 use zexe_algebra::{bls12_381};
+use zexe_algebra::bls12_381::Bls12_381;
 
 use crate::encoding::{EncodedPoint, GroupDecodingError};
 
@@ -352,14 +353,14 @@ macro_rules! compression {
     ($wrapper:tt,$group:tt,$se:tt,$de:tt,$encodedwrapper:tt) => {
 
         ///Ask Jeff
-        #[derive(Default)]
-        struct $encodedwrapper<E> where E: $de {
+        #[derive(Default,Hash,PartialEq,Eq,PartialOrd,Ord)]
+        struct $encodedwrapper<E: $de> {
             pub serialized_point : Vec<u8>
         }
 
-        impl<E: $de> $encodedwrapper<E> where E: $de {
+        impl<E: $de> $encodedwrapper<E> {
 
-            pub fn new(pre_serialized_point: Vec<u8>) -> $encodedwrapper {
+            pub fn new(pre_serialized_point: Vec<u8>) -> $encodedwrapper<E> {
                 $encodedwrapper { serialized_point: pre_serialized_point}
             }
 
@@ -369,7 +370,7 @@ macro_rules! compression {
             type Affine = <<E as EngineBLS>::$group as CurveProjective>::Affine;
             /// Creates an empty representation.
             fn empty() -> Self {
-                $encodedwrapper::default();                
+                <$encodedwrapper<E> as Default>::default();                
             }
 
             /// Returns the number of bytes consumed by this representation.
@@ -405,18 +406,17 @@ macro_rules! compression {
                  
             }
 
-            
+           
         }
 
-        impl<E> $wrapper<E> where E: $se {
-
-            
+        impl<E: $de> $wrapper<E> {
+           
             /// Convert our signature or public key type to its compressed form.
             ///
             /// These compressed forms are wraper types on either a `[u8; 48]` 
             /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
             /// read access with `AsRef<[u8]>`.n
-            pub fn compress(&self) -> $encodedwrapper {
+            pub fn compress(&self) -> $encodedwrapper<E> {
                 self.0.into_affine().into_compressed()
             }
         }
@@ -428,7 +428,7 @@ impl<E> $wrapper<E> where E: $de {
     /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
     /// creation and write access with `pairing::EncodedPoint::empty()`
     /// and `AsMef<[u8]>`, respectively.
-    pub fn decompress(compressed: $encodedwrapper) -> Result<Self,GroupDecodingError> {
+    pub fn decompress(compressed: $encodedwrapper<E>) -> Result<Self,GroupDecodingError> {
         Ok($wrapper(compressed.into_affine()?.into_projective()))
     }
 
@@ -480,8 +480,8 @@ impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
 
 macro_rules! zbls_serialization {
     ($wrapper:tt,$orientation:tt,$encodedwrapper:tt,$size:expr) => {
-
-impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12_381>> {
+	
+impl $wrapper<$orientation<Bls12_381>> {
     pub fn to_bytes(&self) -> [u8; $size] {
         let mut bytes = [0u8; $size];
         bytes.copy_from_slice($encodedwrapper::from_affine(self.0.into_affine()).serialized_point);
@@ -544,7 +544,7 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
-compression!(PublicKey,PublicKeyGroup,UnmutatedKeys,DeserializePublicKey,EncodedPublicKey);
+compression!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS,EncodedPublicKey);
 zbls_serialization!(PublicKey,UsualBLS,EncodedPublicKey,48);
 zbls_serialization!(PublicKey,TinyBLS,EncodedPublicKey,96);
 
