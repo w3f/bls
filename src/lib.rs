@@ -87,6 +87,9 @@
 #[macro_use]
 extern crate arrayref;
 
+#[macro_use]
+extern crate algebra_serialize_derive;
+
 // #[macro_use]
 extern crate ff;
 

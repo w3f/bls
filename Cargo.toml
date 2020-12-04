@@ -17,6 +17,7 @@ ff = { version = "0.4", features = ["derive"] }
 sha3 = "0.8"
 #zexe dependencies
 algebra-core = { git = "https://github.com/scipr-lab/zexe" }
+algebra-serialize-derive = { package="ark-serialize-derive", git = "https://github.com/arkworks-rs/algebra" }
 algebra = { git = "https://github.com/scipr-lab/zexe", features = ["bls12_381"] }
 
 # [dependencies.merlin] 

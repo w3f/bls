@@ -33,8 +33,8 @@ use pairing::curves::AffineCurve as CurveAffine;
 use pairing::curves::ProjectiveCurve as CurveProjective;
 use pairing::curves::PairingEngine as  Engine;
 
-use pairing::serialize::{CanonicalSerialize};
-
+use pairing::serialize::{CanonicalSerialize,CanonicalDeserialize};
+use zexe_algebra::{SerializationError, Read, Write};
 use rand::{Rng, thread_rng, SeedableRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 use rand_chacha::ChaCha8Rng;
@@ -344,6 +344,87 @@ fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDeco
     }
 }
 
+macro_rules! serialization {
+    ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
+
+        impl<E> CanonicalSerialize for $wrapper<E> where E: $se {
+            #[inline]
+            fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+                self.0.into_affine().serialize(&mut writer)?;
+                Ok(())
+            }
+            #[inline]
+            fn serialized_size(&self) -> usize {
+                self.0.into_affine().serialized_size()
+            }    
+            #[inline]
+            fn serialize_uncompressed<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+                self.0.into_affine().serialize_uncompressed(&mut writer)?;
+                Ok(())
+            }
+            #[inline]
+            fn uncompressed_size(&self) -> usize {
+                self.0.into_affine().uncompressed_size()
+            }
+            
+            #[inline]
+            fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+                self.0.into_affine().uncompressed_size().serialize_unchecked(&mut writer)?;
+                Ok(())
+            }
+        }
+        
+        
+        impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
+            #[inline]
+            fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+                let affine_point = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalDeserialize>::deserialize(&mut reader)?;
+                Ok($wrapper(affine_point.into_projective()))
+            }
+            
+            #[inline]
+            fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+                let affine_point = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalDeserialize>::deserialize_uncompressed(&mut reader)?;
+                Ok($wrapper(affine_point.into_projective()))
+            }
+            
+            #[inline]
+            fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+                let affine_point = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
+                Ok($wrapper(affine_point.into_projective()))
+            }
+            
+        }
+    }
+}
+
+// #[cfg(feature = "serde")]
+// impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
+//         use std::fmt;
+//         use std::marker::PhantomData;
+
+//         struct MyVisitor<EE: $de>(PhantomData<EE>);
+
+//         impl<'d,EE: $de> ::serde::de::Visitor<'d> for MyVisitor<EE> {
+//             type Value = $wrapper<EE>;
+
+//             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+//                 formatter.write_str(Self::Value::DESCRIPTION)
+//             }
+
+//             fn visit_bytes<ERR>(self, bytes: &[u8]) -> Result<$wrapper<EE>, ERR> where ERR: ::serde::de::Error {
+//                 $wrapper::<EE>::decompress_from_slice(bytes)
+//                 .map_err(serde_error_from_group_decoding_error)
+//             }
+//         }
+//         deserializer.deserialize_bytes(MyVisitor(PhantomData))
+//     }
+// }
+
+//     }
+// }  // macro_rules!
+
 // macro_rules! compression {
 //     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
@@ -435,15 +516,15 @@ fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDeco
 
 // //////// END MACROS //////// //
 
-
-/// Detached BLS Signature
-#[derive(Debug)]
+//, CanonicalSerialize, CanonicalDeserialize)]
+/// Detached BLS Signature 
+#[derive(Debug)] //, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 // TODO: Serialization
 
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
-//compression!(Signature,SignatureGroup,EngineBLS,EngineBLS);
+serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
 //zbls_serialization!(Signature,UsualBLS,96);
 //zbls_serialization!(Signature,TinyBLS,48);
 
@@ -481,7 +562,7 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
-// compression!(PublicKey,PublicKeyGroup,UnmutatedKeys,DeserializePublicKey);
+serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
 // zbls_serialization!(PublicKey,UsualBLS,48);
 // zbls_serialization!(PublicKey,TinyBLS,96);
 
@@ -647,7 +728,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 impl<E: EngineBLS> SignedMessage<E> {
     #[cfg(test)]
     fn verify_slow(&self) -> bool {
-        let g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::one();
+        let g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }
@@ -683,7 +764,7 @@ impl<E: EngineBLS> SignedMessage<E> {
         t.input(context);
         self.vrf_hash(&mut t);
         let mut seed = Out::default();
-        t.xof_result().read(seed.as_mut());
+        XofReader::read(&mut t.xof_result(), seed.as_mut());
         seed
     }
 
@@ -728,7 +809,7 @@ mod tests {
         SignedMessage { message, publickey, signature }
     }
 
-    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12>;
+    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12_381>;
 
     fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
         let SignedMessage { message, publickey, signature } = x;
