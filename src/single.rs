@@ -373,8 +373,7 @@ macro_rules! serialization {
                 Ok(())
             }
         }
-        
-        
+                
         impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
             #[inline]
             fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
@@ -496,23 +495,27 @@ macro_rules! serialization {
 // }  // macro_rules!
 
 
-// macro_rules! zbls_serialization {
-//     ($wrapper:tt,$orientation:tt,$size:expr) => {
+macro_rules! zbls_serialization {
+     ($wrapper:tt,$orientation:tt,$size:expr) => {
 
-// impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12>> {
-//     pub fn to_bytes(&self) -> [u8; $size] {
-//         let mut bytes = [0u8; $size];
-//         bytes.copy_from_slice(self.compress().as_ref());
-//         bytes
-//     }
+         impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12_381>> {
+             //ask Jeff VVVV
+             pub fn to_bytes(&self) -> [u8; $size] {
+                 let mut bytes = [0u8; $size];
+                 let mut vec_bytes = vec![0;  $size];
+                 self.serialize(&mut vec_bytes);
+                 bytes.copy_from_slice(vec_bytes.as_slice());
+                 bytes
+             }
 
-//     pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,GroupDecodingError> {
-//         $wrapper::<$orientation<::zexe_algebra::curves::bls12>>::decompress_from_slice(&bytes[..])
-//     }
-// }
+             pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,SerializationError> {
+                 let mut borrowed_bytes_as_slice : &[u8] = &bytes;
+                 $wrapper::<$orientation<::zexe_algebra::bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
+             }
+         }
 
-//     }
-// }  // macro_rules!
+    }
+}  // macro_rules!
 
 // //////// END MACROS //////// //
 
@@ -525,8 +528,8 @@ pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
 serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
-//zbls_serialization!(Signature,UsualBLS,96);
-//zbls_serialization!(Signature,TinyBLS,48);
+zbls_serialization!(Signature,UsualBLS,96);
+zbls_serialization!(Signature,TinyBLS,48);
 
 impl<E: EngineBLS> Signature<E> {
     const DESCRIPTION : &'static str = "A BLS signature";
@@ -563,8 +566,9 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
 serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
-// zbls_serialization!(PublicKey,UsualBLS,48);
-// zbls_serialization!(PublicKey,TinyBLS,96);
+//ask Jeff: Should I trust these size or ask the CanonicalSerialize to decide for us
+zbls_serialization!(PublicKey,UsualBLS,48);
+zbls_serialization!(PublicKey,TinyBLS,96);
 
 impl<E: EngineBLS> PublicKey<E> {
     const DESCRIPTION : &'static str = "A BLS signature";
