@@ -547,7 +547,7 @@ impl<E: EngineBLS> Signature<E> {
         //   let message = s[0].into_affine().prepare();
         //   let signature = s[1].into_affine().prepare();
         // TODO: Compare benchmarks on variants
-        E::verify_prepared( signature, once( & (publickey,message)) )
+        E::verify_prepared( signature,  &[(publickey,message)] )
     }
 }
 
@@ -827,7 +827,8 @@ mod tests {
         let good = Message::new(b"ctx",b"test message");
 
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        let good_sig = zbls_usual_bytes_test(keypair.sign(good));
+        let good_sig0 = keypair.sign(good);
+        let good_sig = zbls_usual_bytes_test(good_sig0);
         assert!(good_sig.verify_slow());
 
         let keypair_vt = keypair.into_vartime();
@@ -836,8 +837,10 @@ mod tests {
         assert!( good_sig == keypair_vt.sign(good) );
 
         let bad = Message::new(b"ctx",b"wrong message");
-        let bad_sig = zbls_usual_bytes_test(keypair.sign(bad));
+        let bad_sig0 = keypair.sign(bad);
+	let bad_sig = zbls_usual_bytes_test(bad_sig0);
         assert!( bad_sig == keypair.into_vartime().sign(bad) );
+
         assert!( bad_sig.verify() );
 
         let another = Message::new(b"ctx",b"another message");
@@ -845,9 +848,13 @@ mod tests {
         assert!( another_sig == keypair.into_vartime().sign(another) );
         assert!( another_sig.verify() );
 
+	
         assert!(keypair.public.verify(good, &good_sig.signature),
                 "Verification of a valid signature failed!");
-
+	
+	assert!(good != bad, "good == bad");
+	assert!(good_sig.signature != bad_sig.signature, "good sig == bad sig");
+	
         assert!(!keypair.public.verify(good, &bad_sig.signature),
                 "Verification of a signature on a different message passed!");
         assert!(!keypair.public.verify(bad, &good_sig.signature),
