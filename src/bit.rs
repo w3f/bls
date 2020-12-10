@@ -8,6 +8,8 @@ use std::borrow::{Borrow,BorrowMut};
 use std::iter::{once};  // FromIterator
 
 //use pairing::{CurveProjective}; // CurveAffine, Engine
+use pairing::curves::ProjectiveCurve as CurveProjective;
+use pairing::{One, Zero};
 
 use super::*;
 use super::single::SignedMessage;
@@ -208,7 +210,7 @@ where
                     debug_assert!(false, "Incorrect SignerTable implementation with duplicate publickeys" );
                     continue;
                 }
-                publickey.add_assign(&pop_pk.0);
+                publickey += &pop_pk.0;
             }
         }
         once((self.message.clone(), PublicKey(publickey)))
@@ -247,7 +249,7 @@ where
         let s = &mut self.signers.borrow_mut()[i / 8];
         if *s & b != 0 { return Err(SignerTableError::RepeatedSigners); }
         *s |= b;
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
         Ok(())
     }
 
@@ -279,7 +281,7 @@ where
         for (x,y) in self.signers.borrow_mut().iter_mut().zip(other.signers.borrow()) {
             *x |= y;
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += &other.signature.0;
         Ok(())
     }
 }
@@ -347,7 +349,7 @@ where
                         debug_assert!(false, "Incorrect SignerTable implementation with duplicate publickeys" );
                         continue;
                     }
-                    publickey.add_assign(&pop_pk.0);
+                    publickey += &pop_pk.0;
                 }
             }
         }
@@ -446,7 +448,7 @@ where
         let count = self.get_count(i) + 1;
         self.test_count(count) ?;
         self.set_count(i,count);
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
         Ok(())
     }
 
@@ -485,7 +487,7 @@ where
             let count = self.get_count(index);
             if os[index / 8] & (1 << (index % 8)) != 0 { self.set_count(index,count+1); }
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += &other.signature.0;
         Ok(())
     }
 
@@ -512,7 +514,7 @@ where
         for index in 0..8*self.signers[0].borrow().len() {
             self.set_count(index, self.get_count(index) + other.get_count(index));
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += &other.signature.0;
         Ok(())
     }    
 }

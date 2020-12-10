@@ -40,6 +40,8 @@ use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
 //use pairing::{CurveProjective}; // CurveAffine, Engine
+use pairing::curves::ProjectiveCurve as CurveProjective;
+use pairing::{One, Zero};
 
 use super::*;
 use super::verifiers::verify_with_distinct_messages;
@@ -113,7 +115,7 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
     /// Useful for constructing an aggregate signature, but we
     /// recommend instead using a custom types like `BitPoPSignedMessage`.
     pub fn add_signature(&mut self, signature: &Signature<E>) {
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
     }
 
     /// Add only a `Message` and `PublicKey<E>` to our internal data.
@@ -122,7 +124,7 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
     /// recommend instead using a custom types like `BitPoPSignedMessage`.
     pub fn add_message_n_publickey(&mut self, message: &Message, publickey: &PublicKey<E>) {
         self.messages_n_publickeys.entry(*message)
-            .and_modify(|pk0| pk0.0.add_assign(&publickey.0) )
+            .and_modify(|pk0| pk0.0 += &publickey.0 )
             .or_insert(*publickey);
     }
 

@@ -11,20 +11,22 @@ edition = "2018"
 
 [dependencies]
 arrayref = "0.3"
-rand = "0.4"
-ff = { version = "0.8", features = ["derive"] }
+rand = "0.7"
+rand_core = "0.5"
+rand_chacha = "0.2"
 sha3 = "0.8"
 digest = "0.9.0"
+#zexe dependencies
+algebra-core = { git = "https://github.com/scipr-lab/zexe" }
+algebra-serialize-derive = { package="ark-serialize-derive", git = "https://github.com/arkworks-rs/algebra" }
+algebra = { git = "https://github.com/scipr-lab/zexe", features = ["bls12_381"] }
 
 # [dependencies.merlin] 
 # version = "1.1.0"
 ## features = ["debug-transcript"]
 
-#[dependencies.paired]
-#version = "0.20"
-# git = "https://github.com/filecoin-project/pairing"
-[dependencies.pairing]
-version = "0.18"
+#[dependencies]
+
 
 # [dependencies.pairing]
 # git = "https://github.com/burdges/pairing"
@@ -46,3 +48,5 @@ optional = true
 
 [dev-dependencies]
 rand= "0.7.3"
+[dependencies.thiserror]
+version = "1.0.10"

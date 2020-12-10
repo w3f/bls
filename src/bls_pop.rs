@@ -1,6 +1,6 @@
 //! ## Implementation of ProofofPossion trait for BLS keys using schnorr sginature
 //! ## TODO: I assume this can also moved to pop.rs but for now I put it separately to help reviews
-use crate::engine::{PoP, EngineBLS};
+use crate::engine::{EngineBLS}; //{PoP}
 use crate::pop::{ProofOfPossession};
 
 use digest::{Digest};
