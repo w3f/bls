@@ -503,7 +503,7 @@ macro_rules! zbls_serialization {
              pub fn to_bytes(&self) -> [u8; $size] {
                  let mut bytes = [0u8; $size];
                  let mut vec_bytes = vec![0;  $size];
-                 self.serialize(&mut vec_bytes);
+                 self.serialize(&mut vec_bytes[..]);
                  bytes.copy_from_slice(vec_bytes.as_slice());
                  bytes
              }
