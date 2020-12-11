@@ -1,29 +1,48 @@
 //! ## Implementation of ProofofPossion trait for BLS keys using schnorr sginature
 //! ## TODO: I assume this can also moved to pop.rs but for now I put it separately to help reviews
-use crate::engine::{EngineBLS}; //{PoP}
+use crate::engine::{EngineBLS, ZBLS, UsualBLS}; //{PoP}
 use crate::pop::{ProofOfPossession};
+use crate::single::{Keypair,PublicKey};
 
 use digest::{Digest};
 
-pub struct BLS_Schnorr_Proof<E: EngineBLS>(E::PublicKeyGroup, E::Scalar);
+use pairing::fields::{Field, PrimeField, SquareRootField};
+use pairing::serialize::{CanonicalSerialize};
+use pairing::curves::ProjectiveCurve;
+use pairing::{One, Zero};
 
-impl<E: EngineBLS>  BLS_Schnorr_Proof<E> 
+use rand::{Rng, thread_rng, SeedableRng};
+use pairing::bytes::{FromBytes, ToBytes};
+use sha3::Shake256;
+
+pub struct BLS_Schnorr_Proof<E: EngineBLS>(PublicKey<E>, E::Scalar);
+
+impl<E: EngineBLS> BLS_Schnorr_Proof<E> 
 {
     /// Produce a secret witness scalar `k`, aka nonce, from hash of
     /// H( H(s) | H(public_key)) because our key does not have the
     /// randomness redundacy exists in EdDSA secret key.
-    fn witness_scalar<H: Digest>(&self, secret_key: E::Scalar, public_key: E::Scalar) -> E::Scalar {
-        let secret_key_hash = H::new().chain(secret_key);
+    fn witness_scalar<H: Digest>(&self, secret_key: E::Scalar, public_key: PublicKey<E>) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField {
+        let mut secret_key_as_bytes = vec![0;  secret_key.serialized_size()];
 
-        let scalar_bytes =  H::new.chain(secret_key_hash).chain(public_key);
-        Self::E::Scalar::from_bytes_mod_order_wide(&scalar_bytes)
+        let mut affine_public_key = public_key.0.into_affine();
+        let mut public_key_as_bytes = vec![0;  affine_public_key.serialized_size()];
+
+        secret_key.serialize(&mut secret_key_as_bytes[..]).unwrap();
+        affine_public_key.serialize(&mut public_key_as_bytes[..]).unwrap();        
+        
+        let secret_key_hash = <H as Digest>::new().chain(secret_key_as_bytes);
+        let public_key_hash = <H as Digest>::new().chain(public_key_as_bytes);
+
+        let scalar_bytes = <H as Digest>::new().chain(secret_key_hash.finalize()).chain(public_key_hash.finalize()).finalize();
+        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(scalar_bytes.as_slice()).unwrap()
     }
 
 }
 
 impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLS_Schnorr_Proof<E> {
 
-    fn sign_pok(&self, secret_key: E::Scalar, public_key: Self::PublicKey) -> Self::SchnorrProof {
+    fn sign_pok(&self, secret_key: E::Scalar, public_key: PublicKey<E>) -> Self::SchnorrProof {
         //First we should figure out the base point in E, I think the secret key trait/struct knows about it.
 
         //choose random scaler k
@@ -38,14 +57,22 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLS_Schnorr_Proof<E> {
         // publishing (s, R) verifying that (s*G = H(R|M)*Publickey + R
         // publising  (s, k) verifying H(+s G - k Publkey|M) = k
         
-        let mut r = self.witness_scalar(secret_key, public_key); 
-        let R = r.mul_assign(public_key.one()); //todo perhaps we need to mandate E to have  a hard coded point
+        let mut r = self.witness_scalar::<H>(secret_key, public_key);
+        
+        let mut r_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
+        r_point *= r; //todo perhaps we need to mandate E to have  a hard coded point
 
-        let k_as_hash = Self::H::new().chain(R.as_bytes()).chain(public_key);
-        let k = Self::E::Scalar::from_bytes_mod_order_wide(k_as_hash);
-        let s: Self::E::Scalar = &(&k * &secret_key) + &r;
+        let mut r_point_as_bytes = Vec::<u8>::new();
+        let mut public_key_as_bytes = Vec::<u8>::new();
+        r_point.into_affine().write(&mut r_point_as_bytes);
+        public_key.0.into_affine().write(&mut public_key_as_bytes);
+        
+        let k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(public_key_as_bytes).finalize();
+        let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(k_as_hash.as_slice()).unwrap();
+        let s = (k * secret_key) + r;
 
-        ::zeroize::Zeroize::zeroize(&mut r);
+        r = E::Scalar::zero();
+        //::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
 
         (s,k)
 
@@ -68,7 +95,8 @@ mod tests {
     fn bls_pop_sign() {
 
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        let mut proof_of_possession = BLS_Schnorr_Proof(keypair_vt.pubkey, keypair_vt.secret);
-        proof_of_possession.sign_pok(keypair_vt.secret, keypair_vt.pubkey);
+        let mut secret_key = keypair.secret.into_vartime();
+        let mut proof_of_possession = BLS_Schnorr_Proof(keypair.public, secret_key.0);
+        proof_of_possession.sign_pok(secret_key.0, keypair.public);
     }
 }

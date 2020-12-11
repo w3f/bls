@@ -104,7 +104,7 @@ pub trait EngineBLS {
     fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
 	let mut myrng = rand::rngs::StdRng::from_seed(*array_ref![message.borrow(),0,32]);
         <Self::SignatureGroup as UniformRand>::rand(&mut myrng)
-    }␎
+    }
 
     /// Run the Miller loop from `Engine` but orients its arguments
     /// to be a `SignatureGroup` and `PublicKeyGroup`.

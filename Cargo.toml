@@ -16,6 +16,7 @@ rand_core = "0.5"
 rand_chacha = "0.2"
 sha3 = "0.8"
 digest = "0.9.0"
+
 #zexe dependencies
 algebra-core = { git = "https://github.com/scipr-lab/zexe" }
 algebra-serialize-derive = { package="ark-serialize-derive", git = "https://github.com/arkworks-rs/algebra" }
