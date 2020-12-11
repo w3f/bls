@@ -102,16 +102,9 @@ pub trait EngineBLS {
 
     /// Hash one message to the signature curve.
     fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-
-    // TODO::arbitrary seed just to make it compile should come from the message
-    let seed = [
-        1, 0, 0, 0, 23, 0, 0, 0, 200, 1, 0, 0, 210, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
-    ];
-        
-        let mut myrng = rand::rngs::StdRng::from_seed(seed);
+	let mut myrng = rand::rngs::StdRng::from_seed(*array_ref![message.borrow(),0,32]);
         <Self::SignatureGroup as UniformRand>::rand(&mut myrng)
-    }
+    }␎
 
     /// Run the Miller loop from `Engine` but orients its arguments
     /// to be a `SignatureGroup` and `PublicKeyGroup`.
