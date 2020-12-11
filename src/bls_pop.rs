@@ -13,7 +13,8 @@ use pairing::{One, Zero};
 
 use rand::{Rng, thread_rng, SeedableRng};
 use pairing::bytes::{FromBytes, ToBytes};
-use sha3::Shake256;
+use sha3::{Shake256};
+use sha2::Sha512;
 
 pub struct BLS_Schnorr_Proof<E: EngineBLS>(PublicKey<E>, E::Scalar);
 
@@ -97,6 +98,6 @@ mod tests {
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
         let mut secret_key = keypair.secret.into_vartime();
         let mut proof_of_possession = BLS_Schnorr_Proof(keypair.public, secret_key.0);
-        proof_of_possession.sign_pok(secret_key.0, keypair.public);
+        <BLS_Schnorr_Proof<_> as ProofOfPossession<_, Sha512>>::sign_pok(&proof_of_possession,secret_key.0, keypair.public);
     }
 }
