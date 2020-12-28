@@ -20,7 +20,7 @@ digest = "0.9.0"
 
 #zexe dependencies
 algebra-core = { git = "https://github.com/scipr-lab/zexe" }
-algebra-serialize-derive = { package="ark-serialize-derive", git = "https://github.com/arkworks-rs/algebra" }
+algebra-serialize-derive = { package = "ark-serialize-derive", git = "https://github.com/arkworks-rs/algebra" }
 algebra = { git = "https://github.com/scipr-lab/zexe", features = ["bls12_381"] }
 
 # [dependencies.merlin] 

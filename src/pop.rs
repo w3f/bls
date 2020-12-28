@@ -84,15 +84,16 @@ use super::verifiers::verify_with_distinct_messages;
 //
 // TODO: Implement gaussian elimination verification scheme.
 
+pub type SchnorrProof<E: EngineBLS> = (E::Scalar, E::Scalar);
+
 use single::PublicKey;
 /// ProofOfPossion trait which provides 
 pub trait ProofOfPossession<E: EngineBLS, H: Digest> {
     type PublicKey = PublicKey<E>;
-    type SchnorrProof = (E::Scalar, E::Scalar);
 
-    fn sign_pok(&self, secret_key: E::Scalar, public_key: PublicKey<E>) -> Self::SchnorrProof;
+    fn generate_pok(&self, secret_key: E::Scalar) -> SchnorrProof<E>;
 
-    fn verify_pok(&self) -> bool;
+    fn verify_pok(schnorr_proof: SchnorrProof<E>, public_key: PublicKey<E>) -> bool;
 
 }
 
