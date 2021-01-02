@@ -87,14 +87,17 @@ use super::verifiers::verify_with_distinct_messages;
 pub type SchnorrProof<E: EngineBLS> = (E::Scalar, E::Scalar);
 
 use single::PublicKey;
-/// ProofOfPossion trait which provides 
-pub trait ProofOfPossession<E: EngineBLS, H: Digest> {
+/// ProofOfPossion trait which should be implemented by secret
+pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
     type PublicKey = PublicKey<E>;
 
-    fn generate_pok(&self, secret_key: E::Scalar) -> SchnorrProof<E>;
+    fn generate_pok(&self, message: [u8]) -> SchnorrProof<E>;
 
+}
+
+/// This should be implemented by public key
+pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
     fn verify_pok(schnorr_proof: SchnorrProof<E>, public_key: PublicKey<E>) -> bool;
-
 }
 
 #[derive(Clone)]
