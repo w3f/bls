@@ -27,6 +27,8 @@ impl<E: EngineBLS> BLSSchnorrProof<E>
     /// Produce a secret witness scalar `k`, aka nonce, from hash of
     /// H( H(s) | H(public_key)) because our key does not have the
     /// randomness redundacy exists in EdDSA secret key.
+    ///
+    /// TODO: BROKEN NOW Switch to https://github.com/arkworks-rs/algebra/pull/164/files
     fn witness_scalar<H: Digest>(&self, secret_key: E::Scalar) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField {
         let mut secret_key_as_bytes = vec![0;  secret_key.serialized_size()];
 
@@ -39,8 +41,10 @@ impl<E: EngineBLS> BLSSchnorrProof<E>
         let secret_key_hash = <H as Digest>::new().chain(secret_key_as_bytes);
         let public_key_hash = <H as Digest>::new().chain(public_key_as_bytes);
 
-        let scalar_bytes = <H as Digest>::new().chain(secret_key_hash.finalize()).chain(public_key_hash.finalize()).finalize();
-        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(scalar_bytes.as_slice()).unwrap()
+        let mut scalar_bytes = <H as Digest>::new().chain(secret_key_hash.finalize()).chain(public_key_hash.finalize()).finalize();
+	let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
+	random_scalar[31] &= 127; // BROKEN HACK DO BOT DEPLOY
+        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap()
     }
 
 }
@@ -71,8 +75,11 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
         r_point.into_affine().write(&mut r_point_as_bytes);
         self.public_key.0.into_affine().write(&mut public_key_as_bytes);
         
-        let k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(public_key_as_bytes).finalize();
-        let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(k_as_hash.as_slice()).unwrap();
+        let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(public_key_as_bytes).finalize();
+	let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
+	random_scalar[31] &= 127; // BROKEN HACK DO BOT DEPLOY
+
+        let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap();
         let s = (k * secret_key) + r;
 
         r = E::Scalar::zero();
@@ -91,11 +98,13 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
         schnorr_point.into_affine().write(&mut schnorr_point_as_bytes);
 
-        let scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).finalize();
+        let mut scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).finalize();
+	let random_scalar = scalar_bytes.as_mut_slice();
+	random_scalar[31] &= 127; // BROKEN HACK DO BOT DEPLOY
 
         let witness_scaler = schnorr_proof.1;
 
-        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(scalar_bytes.as_slice()).unwrap() == witness_scaler
+        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap() == witness_scaler
         
     }
 
@@ -122,7 +131,7 @@ mod tests {
         let mut secret_key = keypair.secret.into_vartime();
         let mut proof_of_possession = BLSSchnorrProof{ public_key : keypair.public, proof_of_possession: (<ZBLS as EngineBLS>::Scalar::zero(),<ZBLS as EngineBLS>::Scalar::zero())};
         let mut proof_pair = <BLSSchnorrProof<ZBLS> as ProofOfPossession<ZBLS, Sha512>>::generate_pok(&proof_of_possession, secret_key.0);
-        assert!(<BLSSchnorrProof<_> as ProofOfPossession<_, Sha512>>::verify_pok(proof_pair, proof_of_possession.public_key), "valid pok does not verfy")
+        assert!(<BLSSchnorrProof<_> as ProofOfPossession<_, Sha512>>::verify_pok(proof_pair, proof_of_possession.public_key), "valid pok does not verify")
         
 
     }
