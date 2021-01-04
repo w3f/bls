@@ -42,8 +42,8 @@ impl<E: EngineBLS> BLSSchnorrProof<E>
         let public_key_hash = <H as Digest>::new().chain(public_key_as_bytes);
 
         let mut scalar_bytes = <H as Digest>::new().chain(secret_key_hash.finalize()).chain(public_key_hash.finalize()).finalize();
-	let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
-	random_scalar[31] &= 127; // BROKEN HACK DO BOT DEPLOY
+	    let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
+	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
         <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap()
     }
 
@@ -74,10 +74,14 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
         let mut public_key_as_bytes = Vec::<u8>::new();
         r_point.into_affine().write(&mut r_point_as_bytes);
         self.public_key.0.into_affine().write(&mut public_key_as_bytes);
-        
-        let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(public_key_as_bytes).finalize();
-	let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
-	random_scalar[31] &= 127; // BROKEN HACK DO BOT DEPLOY
+
+        print!("R: {}\n", r_point.into_affine());
+        print!("pG: {}\n", self.public_key.0.into_affine());
+
+        //.chain(public_key_as_bytes) M is empty for now
+        let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).finalize();
+	    let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
+	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 
         let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap();
         let s = (k * secret_key) + r;
@@ -85,6 +89,8 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
         r = E::Scalar::zero();
         //::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
 
+        print!("k: {}\n", k);
+        print!("s: {}\n", s);
         (s,k)
     }
 
@@ -94,13 +100,20 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
     fn verify_pok(schnorr_proof: SchnorrProof<E>, public_key: PublicKey<E>) -> bool {
         let mut schnorr_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
         schnorr_point *= schnorr_proof.0;
-        schnorr_point += public_key.0;
+        let mut k_public_key = public_key.0;
+        k_public_key *= -schnorr_proof.1;
+        schnorr_point += k_public_key;
+
+        print!("recoveredR: {}\n",schnorr_point);
+        print!("pG: {}\n", public_key.0.into_affine());
+        print!("k: {}\n", schnorr_proof.1);
+        print!("s: {}\n", schnorr_proof.0);
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
         schnorr_point.into_affine().write(&mut schnorr_point_as_bytes);
 
         let mut scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).finalize();
 	let random_scalar = scalar_bytes.as_mut_slice();
-	random_scalar[31] &= 127; // BROKEN HACK DO BOT DEPLOY
+	random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 
         let witness_scaler = schnorr_proof.1;
 
