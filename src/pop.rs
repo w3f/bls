@@ -89,15 +89,12 @@ pub type SchnorrProof<E: EngineBLS> = (E::Scalar, E::Scalar);
 use single::PublicKey;
 /// ProofOfPossion trait which should be implemented by secret
 pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
-    type PublicKey = PublicKey<E>;
-
-    fn generate_pok(&self, message: [u8]) -> SchnorrProof<E>;
-
+    fn generate_pok(&self) -> SchnorrProof<E>;
 }
 
 /// This should be implemented by public key
 pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
-    fn verify_pok(schnorr_proof: SchnorrProof<E>, public_key: PublicKey<E>) -> bool;
+    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
 }
 
 #[derive(Clone)]

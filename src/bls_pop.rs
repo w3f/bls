@@ -1,9 +1,9 @@
 //! ## Implementation of ProofofPossion trait for BLS keys using schnorr sginature
 //! ## TODO: I assume this can also moved to pop.rs but for now I put it separately to help reviews
 use crate::engine::{EngineBLS, ZBLS, UsualBLS}; //{PoP}
-use crate::pop::{ProofOfPossession, SchnorrProof};
+use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier, SchnorrProof};
 
-use crate::single::{Keypair,PublicKey};
+use crate::single::{SecretKey,PublicKey};
 
 use digest::{Digest};
 
@@ -17,25 +17,30 @@ use pairing::bytes::{FromBytes, ToBytes};
 use sha3::{Shake256};
 use sha2::Sha512;
 
-pub struct BLSSchnorrProof<E: EngineBLS>{
-    pub public_key : PublicKey<E>,
-    pub proof_of_possession : SchnorrProof<E>,
-}
+// TODO: Delete after migration to secret key model
+// pub struct BLSSchnorrProof<E: EngineBLS> : trait B: {
+//     pub public_key : PublicKey<E>,
+//     pub proof_of_possession : SchnorrProof<E>,
+// }
 
-impl<E: EngineBLS> BLSSchnorrProof<E> 
-{
+/// Generate Schnorr Signature for an arbitrary message 
+trait BLSSchnorrPoPGenerator<E: EngineBLS, H: Digest> : ProofOfPossessionGenerator<E,H> {
     /// Produce a secret witness scalar `k`, aka nonce, from hash of
     /// H( H(s) | H(public_key)) because our key does not have the
     /// randomness redundacy exists in EdDSA secret key.
-    ///
-    /// TODO: BROKEN NOW Switch to https://github.com/arkworks-rs/algebra/pull/164/files
-    fn witness_scalar<H: Digest>(&self, secret_key: E::Scalar) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField {
-        let mut secret_key_as_bytes = vec![0;  secret_key.serialized_size()];
+    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField;
+}
 
-        let mut affine_public_key = self.public_key.0.into_affine();
+impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for SecretKey<E>
+{
+    /// TODO: BROKEN NOW Switch to https://github.com/arkworks-rs/algebra/pull/164/files
+    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField {
+        let mut secret_key_as_bytes = vec![0;  self.into_vartime().0.serialized_size()];
+
+        let mut affine_public_key = self.into_public().0.into_affine();
         let mut public_key_as_bytes = vec![0;  affine_public_key.serialized_size()];
 
-        secret_key.serialize(&mut secret_key_as_bytes[..]).unwrap();
+        self.into_vartime().0.serialize(&mut secret_key_as_bytes[..]).unwrap();
         affine_public_key.serialize(&mut public_key_as_bytes[..]).unwrap();        
         
         let secret_key_hash = <H as Digest>::new().chain(secret_key_as_bytes);
@@ -49,9 +54,9 @@ impl<E: EngineBLS> BLSSchnorrProof<E>
 
 }
 
-impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
+impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for SecretKey<E> {
 
-    fn generate_pok(&self, secret_key: E::Scalar) -> SchnorrProof<E> {
+    fn generate_pok(&self) -> SchnorrProof<E> {
         //First we should figure out the base point in E, I think the secret key trait/struct knows about it.
 
         //choose random scaler k
@@ -64,8 +69,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
         //k = H(R|M)
         //s = k*private_key + r
         // publishing (s, R) verifying that (s*G = H(R|M)*Publickey + R
-        
-        let mut r = self.witness_scalar::<H>(secret_key);
+        let mut r = <BLSSchnorrPoPGenerator<E,H>>::witness_scalar(self);
         
         let mut r_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
         r_point *= r; //todo perhaps we need to mandate E to have  a hard coded point
@@ -73,10 +77,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
         let mut r_point_as_bytes = Vec::<u8>::new();
         let mut public_key_as_bytes = Vec::<u8>::new();
         r_point.into_affine().write(&mut r_point_as_bytes);
-        self.public_key.0.into_affine().write(&mut public_key_as_bytes);
-
-        print!("R: {}\n", r_point.into_affine());
-        print!("pG: {}\n", self.public_key.0.into_affine());
+        self.into_public().0.into_affine().write(&mut public_key_as_bytes);
 
         //.chain(public_key_as_bytes) M is empty for now
         let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).finalize();
@@ -84,36 +85,32 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
 	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 
         let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap();
-        let s = (k * secret_key) + r;
+        let s = (k * self.into_vartime().0) + r;
 
         r = E::Scalar::zero();
         //::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
 
-        print!("k: {}\n", k);
-        print!("s: {}\n", s);
         (s,k)
     }
+}
 
+impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
     /// verify the validity of schnoor proof for a given publick key by
     /// making sure this is equal to zero
     /// H(+s G - k Publkey|M) ==  k  
-    fn verify_pok(schnorr_proof: SchnorrProof<E>, public_key: PublicKey<E>) -> bool {
+    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool {
         let mut schnorr_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
         schnorr_point *= schnorr_proof.0;
-        let mut k_public_key = public_key.0;
+        let mut k_public_key = self.0;
         k_public_key *= -schnorr_proof.1;
         schnorr_point += k_public_key;
 
-        print!("recoveredR: {}\n",schnorr_point);
-        print!("pG: {}\n", public_key.0.into_affine());
-        print!("k: {}\n", schnorr_proof.1);
-        print!("s: {}\n", schnorr_proof.0);
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
         schnorr_point.into_affine().write(&mut schnorr_point_as_bytes);
 
         let mut scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).finalize();
-	let random_scalar = scalar_bytes.as_mut_slice();
-	random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
+	    let random_scalar = scalar_bytes.as_mut_slice();
+	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 
         let witness_scaler = schnorr_proof.1;
 
@@ -125,6 +122,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossession<E,H> for BLSSchnorrProof<E> {
 
 #[cfg(test)]
 use rand_core::{RngCore,CryptoRng};
+use crate::single::{Keypair};
 
 mod tests {
     use super::*;
@@ -132,20 +130,17 @@ mod tests {
     #[test]
     fn bls_pop_sign() {
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        let mut secret_key = keypair.secret.into_vartime();
-        let mut proof_of_possession = BLSSchnorrProof{ public_key : keypair.public, proof_of_possession: (<ZBLS as EngineBLS>::Scalar::zero(),<ZBLS as EngineBLS>::Scalar::zero())};
-        <BLSSchnorrProof<ZBLS> as ProofOfPossession<ZBLS, Sha512>>::generate_pok(&proof_of_possession, secret_key.0);
+        <ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&keypair.secret);
     }
 
     #[test]
     fn bls_pop_sign_and_verify()
     {
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        let mut secret_key = keypair.secret.into_vartime();
-        let mut proof_of_possession = BLSSchnorrProof{ public_key : keypair.public, proof_of_possession: (<ZBLS as EngineBLS>::Scalar::zero(),<ZBLS as EngineBLS>::Scalar::zero())};
-        let mut proof_pair = <BLSSchnorrProof<ZBLS> as ProofOfPossession<ZBLS, Sha512>>::generate_pok(&proof_of_possession, secret_key.0);
-        assert!(<BLSSchnorrProof<_> as ProofOfPossession<_, Sha512>>::verify_pok(proof_pair, proof_of_possession.public_key), "valid pok does not verify")
-        
+        let mut secret_key = keypair.secret;
+        let proof_pair = <ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&secret_key);
+        assert!(<ProofOfPossessionVerifier<ZBLS, Sha512>>::verify_pok(&keypair.public, proof_pair), "valid pok does not verify")
 
     }
+    
 }
