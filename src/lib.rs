@@ -196,7 +196,7 @@ pub trait Signed: Sized {
     /// optimized variants. 
     fn verify(self) -> bool {
         // verifiers::verify_simple(self)
-	true
+	    true
     }
 }
 

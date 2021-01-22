@@ -597,7 +597,7 @@ mod tests {
         assert!( countsig.verify() ); 
         for (i,sig) in sigs1.iter().enumerate().take(3) {
             assert!( countsig.add(sig).is_ok() == (i<4));
-            assert!( countsig.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+            assert!( countsig.verify(), "countsig failed at sig {}",i );  // verifiers::verify_with_distinct_messages(&dms,true)
         }
         assert!( countsig.add_bitsig(&bitsig1a).is_ok() );
         assert!( countsig.add_bitsig(&bitsig1a).is_ok() );
