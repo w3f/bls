@@ -340,7 +340,7 @@ where
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
         for signers in self.signers.iter().rev().map(|signers| signers.borrow()) {
-            publickey.double();
+            publickey.double_in_place();
             for i in 0..8*signers.len() {
                 if signers[i / 8] & (1 << (i % 8)) != 0 {
                     let pop_pk = self.proofs_of_possession.lookup(i).unwrap();
