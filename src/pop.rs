@@ -40,8 +40,8 @@ use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
 //use pairing::{CurveProjective}; // CurveAffine, Engine
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::{One, Zero};
+use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_ff::{One, Zero};
 
 use super::*;
 use super::verifiers::verify_with_distinct_messages;

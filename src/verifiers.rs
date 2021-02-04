@@ -8,9 +8,9 @@ use std::collections::HashMap;
 // use std::hash::Hash;  // Hasher
 
 //use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, SqrtField
-use pairing::curves::AffineCurve as CurveAffine;
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::serialize::{CanonicalSerialize};
+use ark_ec::AffineCurve as CurveAffine;
+use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_serialize::{CanonicalSerialize};
 
 use super::*;
 

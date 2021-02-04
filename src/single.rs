@@ -23,18 +23,19 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use pairing::{Field, PrimeField, UniformRand}; // ScalarEngine, SqrtField
-use pairing::biginteger::{BigInteger}; // ScalarEngine, SqrtField
-use pairing::fields::{SquareRootField};
-use pairing::{One, Zero};
+use ark_ff::{Field, PrimeField, UniformRand}; // ScalarEngine, SqrtField
+use ark_ff::biginteger::{BigInteger}; // ScalarEngine, SqrtField
+use ark_ff::{SquareRootField};
+use ark_ff::{One, Zero};
 
 //use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
-use pairing::curves::AffineCurve as CurveAffine;
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::curves::PairingEngine as  Engine;
+use ark_ec::AffineCurve as CurveAffine;
+use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_ec::PairingEngine as  Engine;
 
-use pairing::serialize::{CanonicalSerialize,CanonicalDeserialize};
-use zexe_algebra::{SerializationError, Read, Write};
+use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
+//use ark_serialize_derive::{ CanonicalSerialize};
+//use ark_serialize_derive::CanonicalDeserialize;
 use rand::{Rng, thread_rng, SeedableRng};
 // use rand::prelude::*; // ThreadRng,thread_rng
 use rand_chacha::ChaCha8Rng;
@@ -66,8 +67,8 @@ impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
     pub fn to_repr(&self) -> <E::Scalar as PrimeField>::BigInt {
         self.0.into_repr()
     }
-    pub fn write<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
-        self.to_repr().write_le(&mut writer)
+    pub fn write<W: Write>(&self, mut writer: W) -> _ {
+        self.0.write_le(&mut writer)
     }
 
     /// Convert our secret key from its representation type, which
@@ -499,7 +500,7 @@ macro_rules! serialization {
 macro_rules! zbls_serialization {
      ($wrapper:tt,$orientation:tt,$size:expr) => {
 
-         impl $wrapper<$orientation<::zexe_algebra::bls12_381::Bls12_381>> {
+         impl $wrapper<$orientation<ark_bls12_381::Bls12_381>> {
              //ask Jeff VVVV
              pub fn to_bytes(&self) -> [u8; $size] {
                  let mut bytes = [0u8; $size];
@@ -511,7 +512,7 @@ macro_rules! zbls_serialization {
 
              pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,SerializationError> {
                  let mut borrowed_bytes_as_slice : &[u8] = &bytes;
-                 $wrapper::<$orientation<::zexe_algebra::bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
+                 $wrapper::<$orientation<ark_bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
              }
          }
 

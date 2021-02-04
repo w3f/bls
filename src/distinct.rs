@@ -24,9 +24,9 @@
 use std::collections::HashMap;
 // use std::iter::{FromIterator};
 
-//use pairing::{CurveProjective}; // CurveAffine, Engine
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::{One, Zero};
+//use ark_algebra::{CurveProjective}; // CurveAffine, Engine
+use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_ff::{One, Zero};
 
 use super::*;
 use super::single::SignedMessage;

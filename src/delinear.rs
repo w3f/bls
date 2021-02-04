@@ -13,13 +13,12 @@
 //! adding a more finely tuned scheme.
 
 //use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
-//use pairing::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
-use pairing::curves::AffineCurve as CurveAffine;
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::{One, Zero};
-use pairing::PrimeField;
-use pairing::CanonicalSerialize;
-use pairing::BigInteger;
+//use ark_algebra::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
+use ark_ec::AffineCurve as CurveAffine;
+use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_ff::{PrimeField, One, Zero};
+use ark_serialize::CanonicalSerialize;
+use ark_ff::BigInteger;
 
 use rand::{Rng, thread_rng};
 use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};

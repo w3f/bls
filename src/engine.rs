@@ -1,4 +1,4 @@
-//! ## Adaptation of `pairing::Engine` to BLS-like signatures.
+//! ## Adaptation of `ark_ec::PairingEngine` to BLS-like signatures.
 //!
 //! We provide an `EngineBLS` trait that adapts `pairing::Engine`
 //! to BLS-like signatures by permitting the group roles to be
@@ -20,18 +20,18 @@ use std::borrow::{Borrow,Cow};
 use std::ops::{Deref, MulAssign};
     
 //use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
-use pairing::fields::{Field, PrimeField, SquareRootField};
-use pairing::curves::AffineCurve as CurveAffine;
-use pairing::curves::ProjectiveCurve as CurveProjective;
-use pairing::curves::{PairingEngine, prepare_g1, prepare_g2};
-use pairing::prelude::UniformRand;
-use pairing::{One, Zero};
+use ark_ff::{Field, PrimeField, SquareRootField};
+use ark_ec::AffineCurve as CurveAffine;
+use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_ec::{PairingEngine, prepare_g1, prepare_g2};
+use ark_ff::UniformRand;
+use ark_ff::{One, Zero};
 use rand::{Rng, rngs::{StdRng}};
 use rand_core::RngCore;
 
-use zexe_algebra::{bls12_381};
+use ark_bls12_381::{Bls12_381};
 
-use zexe_algebra::bytes::{FromBytes, ToBytes};
+use ark_ff::bytes::{FromBytes, ToBytes};
 use std::fmt::Debug;
 
 use rand::SeedableRng; //just for test
@@ -185,7 +185,7 @@ pub trait EngineBLS {
 }
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub type ZBLS = UsualBLS<::zexe_algebra::bls12_381::Bls12_381>;
+pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 // pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});

@@ -88,10 +88,11 @@
 extern crate arrayref;
 
 #[macro_use]
-extern crate algebra_serialize_derive;
+extern crate ark_serialize;
+extern crate ark_serialize_derive;
 
-extern crate algebra_core as pairing;
-extern crate algebra as zexe_algebra;
+extern crate ark_ff;
+extern crate ark_ec;
 extern crate rand;
 extern crate rand_core;
 extern crate rand_chacha;

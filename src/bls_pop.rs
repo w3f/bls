@@ -7,13 +7,13 @@ use crate::single::{SecretKey,PublicKey};
 
 use digest::{Digest};
 
-use pairing::fields::{Field, PrimeField, SquareRootField};
-use pairing::serialize::{CanonicalSerialize};
-use pairing::curves::ProjectiveCurve;
-use pairing::{One, Zero};
+use ark_ff::{Field, PrimeField, SquareRootField};
+use ark_serialize::{CanonicalSerialize};
+use ark_ec::ProjectiveCurve;
+use ark_ff::{One, Zero};
 
 use rand::{Rng, thread_rng, SeedableRng};
-use pairing::bytes::{FromBytes, ToBytes};
+use ark_ff::bytes::{FromBytes, ToBytes};
 use sha3::{Shake256};
 use sha2::Sha512;
 
