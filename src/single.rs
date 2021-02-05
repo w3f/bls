@@ -51,6 +51,7 @@ use super::*;
 
 /// Secret signing key lacking the side channel protections from
 /// key splitting.  Avoid using directly in production.
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct SecretKeyVT<E: EngineBLS>(pub E::Scalar);
 
 impl<E: EngineBLS> Clone for SecretKeyVT<E> {
@@ -60,30 +61,6 @@ impl<E: EngineBLS> Clone for SecretKeyVT<E> {
 // TODO: Serialization
 
 impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
-    /// Convert our secret key to its representation type, which
-    /// satisfies both `AsRef<[u64]>` and `ff::PrimeFieldRepr`.
-    /// We suggest `ff::PrimeFieldRepr::write_le` for serialization,
-    /// invoked by our `write` method.
-    pub fn to_repr(&self) -> <E::Scalar as PrimeField>::BigInt {
-        self.0.into_repr()
-    }
-    pub fn write<W: Write>(&self, mut writer: W) -> _ {
-        self.0.write_le(&mut writer)
-    }
-
-    /// Convert our secret key from its representation type, which
-    /// satisfies `Default`, `AsMut<[u64]>`, and `ff::PrimeFieldRepr`.
-    /// We suggest `ff::PrimeFieldRepr::read_le` for deserialization,
-    /// invoked via our `read` method, which requires a seperate call.
-    pub fn from_repr(repr: <E::Scalar as PrimeField>::BigInt) -> Option<Self> {
-        Some(SecretKeyVT(<E::Scalar as PrimeField>::from_repr(repr) ?))
-    }
-    pub fn read<R: io::Read>(mut reader: R) -> io::Result<<E::Scalar as PrimeField>::BigInt> {
-        let mut repr = <E::Scalar as PrimeField>::BigInt::default();
-        repr.read_le(&mut reader) ?;
-        Ok(repr)
-    }
-
     /// Generate a secret key without side channel protections.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )
@@ -398,103 +375,6 @@ macro_rules! serialization {
         }
     }
 }
-
-// #[cfg(feature = "serde")]
-// impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
-//         use std::fmt;
-//         use std::marker::PhantomData;
-
-//         struct MyVisitor<EE: $de>(PhantomData<EE>);
-
-//         impl<'d,EE: $de> ::serde::de::Visitor<'d> for MyVisitor<EE> {
-//             type Value = $wrapper<EE>;
-
-//             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-//                 formatter.write_str(Self::Value::DESCRIPTION)
-//             }
-
-//             fn visit_bytes<ERR>(self, bytes: &[u8]) -> Result<$wrapper<EE>, ERR> where ERR: ::serde::de::Error {
-//                 $wrapper::<EE>::decompress_from_slice(bytes)
-//                 .map_err(serde_error_from_group_decoding_error)
-//             }
-//         }
-//         deserializer.deserialize_bytes(MyVisitor(PhantomData))
-//     }
-// }
-
-//     }
-// }  // macro_rules!
-
-// macro_rules! compression {
-//     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
-
-// impl<E> $wrapper<E> where E: $se {
-//     /// Convert our signature or public key type to its compressed form.
-//     ///
-//     /// These compressed forms are wraper types on either a `[u8; 48]` 
-//     /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
-//     /// read access with `AsRef<[u8]>`.
-//     pub fn compress(&self) -> <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed {
-//         self.0.into_affine().into_compressed()
-//     }
-// }
-
-// impl<E> $wrapper<E> where E: $de {
-//     /// Decompress our signature or public key type from its compressed form.
-//     ///
-//     /// These compressed forms are wraper types on either a `[u8; 48]` 
-//     /// or `[u8; 96]` which satisfy `pairing::EncodedPoint` and permit
-//     /// creation and write access with `pairing::EncodedPoint::empty()`
-//     /// and `AsMef<[u8]>`, respectively.
-//     pub fn decompress(compressed: <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalSerialize>::Compressed) -> Result<Self,GroupDecodingError> {
-//         Ok($wrapper(compressed.into_affine()?.into_projective()))
-//     }
-
-//     pub fn decompress_from_slice(slice: &[u8]) -> Result<Self,GroupDecodingError> {
-//         let mut compressed = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::empty();
-//         if slice.len() != compressed.as_mut().len() {
-//             // We should ideally return our own error here, but this seems acceptable for now.
-//             return Err(GroupDecodingError::UnexpectedInformation);
-//         } // <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed::size() 
-//         compressed.as_mut().copy_from_slice(slice);
-//         $wrapper::<E>::decompress(compressed)
-//     }
-// }
-
-// #[cfg(feature = "serde")]
-// impl<E> ::serde::Serialize for $wrapper<E> where E: $se {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: ::serde::Serializer {
-//         serializer.serialize_bytes(self.compress().as_ref())
-//     }
-// }
-
-// #[cfg(feature = "serde")]
-// impl<'d,E> ::serde::Deserialize<'d> for $wrapper<E> where E: $de {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: ::serde::Deserializer<'d> {
-//         use std::fmt;
-//         use std::marker::PhantomData;
-
-//         struct MyVisitor<EE: $de>(PhantomData<EE>);
-
-//         impl<'d,EE: $de> ::serde::de::Visitor<'d> for MyVisitor<EE> {
-//             type Value = $wrapper<EE>;
-
-//             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-//                 formatter.write_str(Self::Value::DESCRIPTION)
-//             }
-
-//             fn visit_bytes<ERR>(self, bytes: &[u8]) -> Result<$wrapper<EE>, ERR> where ERR: ::serde::de::Error {
-//                 $wrapper::<EE>::decompress_from_slice(bytes)
-//                 .map_err(serde_error_from_group_decoding_error)
-//             }
-//         }
-//         deserializer.deserialize_bytes(MyVisitor(PhantomData))
-//     }
-// }
-
-//     }
-// }  // macro_rules!
 
 
 macro_rules! zbls_serialization {
@@ -815,7 +695,7 @@ mod tests {
         SignedMessage { message, publickey, signature }
     }
 
-    pub type TBLS = TinyBLS<::zexe_algebra::bls12_381::Bls12_381>;
+    pub type TBLS = TinyBLS<ark_bls12_381::Bls12_381>;
 
     fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
         let SignedMessage { message, publickey, signature } = x;
