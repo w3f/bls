@@ -5,10 +5,10 @@
 
 
 use std::borrow::{Borrow,BorrowMut};
-use std::iter::{once};  // FromIterator
+use std::iter::{once};
 
-use ark_ec::ProjectiveCurve as CurveProjective;
-use ark_ff::{One, Zero};
+use ark_ff::{Zero};
+use ark_ec::ProjectiveCurve;
 
 use super::*;
 use super::single::SignedMessage;
@@ -398,11 +398,14 @@ where
         }
     }
 
+    /*
+    commented out to rid of unused warning
+    TODO: add test coverage to trim and uncomment
     fn trim(&mut self) {
         let empty = |s: &POP::Signers| s.borrow().iter().all(|b| *b == 0u8);
         let c = self.signers.len() - self.signers.iter().rev().take_while(|s| empty(&*s)).count();
         self.signers.truncate(c)
-    }
+    }*/
 
     fn test_count(&self, count: usize) -> Result<(),SignerTableError> {
         if count >= self.max_duplicates || count >= usize::max_value() {

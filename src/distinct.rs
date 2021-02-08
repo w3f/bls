@@ -22,11 +22,7 @@
 
 
 use std::collections::HashMap;
-// use std::iter::{FromIterator};
-
-//use ark_algebra::{CurveProjective}; // CurveAffine, Engine
-use ark_ec::ProjectiveCurve as CurveProjective;
-use ark_ff::{One, Zero};
+use ark_ff::{Zero};
 
 use super::*;
 use super::single::SignedMessage;

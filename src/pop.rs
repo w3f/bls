@@ -39,9 +39,7 @@ use digest::Digest;
 use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
-//use pairing::{CurveProjective}; // CurveAffine, Engine
-use ark_ec::ProjectiveCurve as CurveProjective;
-use ark_ff::{One, Zero};
+use ark_ff::{Zero};
 
 use super::*;
 use super::verifiers::verify_with_distinct_messages;
@@ -84,7 +82,7 @@ use super::verifiers::verify_with_distinct_messages;
 //
 // TODO: Implement gaussian elimination verification scheme.
 
-pub type SchnorrProof<E: EngineBLS> = (E::Scalar, E::Scalar);
+pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
 
 use single::PublicKey;
 /// ProofOfPossion trait which should be implemented by secret

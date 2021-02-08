@@ -5,11 +5,8 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
-// use std::hash::Hash;  // Hasher
 
-//use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, SqrtField
-use ark_ec::AffineCurve as CurveAffine;
-use ark_ec::ProjectiveCurve as CurveProjective;
+use ark_ec::ProjectiveCurve;
 use ark_serialize::{CanonicalSerialize};
 
 use super::*;
@@ -23,13 +20,13 @@ use super::*;
 pub type PublicKeyProjective<E> = <E as EngineBLS>::PublicKeyGroup;
 
 /// Convenience type alias for affine form of `PublicKeyGroup`
-pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine;
+pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::Affine;
 
 /// Convenience type alias for projective form of `SignatureGroup`
 pub type SignatureProjective<E> = <E as EngineBLS>::SignatureGroup;
 
 /// Convenience type alias for affine form of `SignatureGroup`
-pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveProjective>::Affine;
+pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as ProjectiveCurve>::Affine;
 
 
 /// Simple unoptimized BLS signature verification.  Useful for testing.

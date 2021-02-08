@@ -12,13 +12,10 @@
 //! but if you need delinearized aggregation then you should consider
 //! adding a more finely tuned scheme.
 
-//use ff::{PrimeField, PrimeFieldRepr}; // Field, ScalarEngine, SqrtField, PrimeFieldDecodingError
-//use ark_algebra::{CurveAffine, CurveProjective};  // Engine, EncodedPoint, GroupDecodingError
-use ark_ec::AffineCurve as CurveAffine;
-use ark_ec::ProjectiveCurve as CurveProjective;
-use ark_ff::{PrimeField, One, Zero};
+use ark_ff::{PrimeField, Zero};
 use ark_serialize::CanonicalSerialize;
 use ark_ff::BigInteger;
+use ark_ec::ProjectiveCurve;
 
 use rand::{Rng, thread_rng};
 use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
@@ -135,12 +132,12 @@ impl<E: EngineBLS> Delinearized<E> {
     pub fn add_message_n_publickey(&mut self, message: &Message, mut publickey: PublicKey<E>) -> E::Scalar {
         let mask = self.mask(&publickey);
         // We must use projective corrdinates here, dispite converting to
-        // affine just above, because only `CurveProjective::mul_assign`
+        // affine just above, because only `ProjectiveCurve::mul_assign`
         // skips doubling until a set bit is found.
         // In fact, there is no method to do this without abusing variable
         // time arithmatic, which might change in future, so we should add
-        // some `CurveProjective` method `fn mul_128(&self, blinding: u128)`.
-        // Or even expose the `CurveAffine::mul_bits` method.
+        // some `ProjectiveCurve` method `fn mul_128(&self, blinding: u128)`.
+        // Or even expose the `AffineCurve::mul_bits` method.
         // TODO: Is using affine here actually faster?
         publickey.0 *= mask;
         self.messages_n_publickeys.entry(*message)
@@ -191,7 +188,7 @@ impl<E: EngineBLS> Delinearized<E> {
 
 
 /*
-type PublicKeyUncompressed<E> = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CurveAffine>::Compressed;
+type PublicKeyUncompressed<E> = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as AffineCurve>::Compressed;
 
 #[derive(Clone)]
 pub struct DelinearizedRepeatedSigners<E: EngineBLS> {

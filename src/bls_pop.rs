@@ -1,23 +1,19 @@
 //! ## Implementation of ProofofPossion trait for BLS keys using schnorr sginature
 //! ## TODO: I assume this can also moved to pop.rs but for now I put it separately to help reviews
-use crate::engine::{EngineBLS, ZBLS, UsualBLS}; //{PoP}
+use crate::engine::{EngineBLS};
 use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier, SchnorrProof};
 
 use crate::single::{SecretKey,PublicKey};
 
 use digest::{Digest};
 
-use ark_ff::{Field, PrimeField, SquareRootField};
 use ark_serialize::{CanonicalSerialize};
 use ark_ec::ProjectiveCurve;
-use ark_ff::{One, Zero};
 
-use rand::{Rng, thread_rng, SeedableRng};
 use ark_ff::bytes::{FromBytes, ToBytes};
-use sha3::{Shake256};
-use sha2::Sha512;
 
 use super::Message;
+
 // TODO: Delete after migration to secret key model
 // pub struct BLSSchnorrProof<E: EngineBLS> : trait B: {
 //     pub public_key : PublicKey<E>,
@@ -38,7 +34,7 @@ impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for SecretKey<E>
     fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField {
         let mut secret_key_as_bytes = vec![0;  self.into_vartime().0.serialized_size()];
 
-        let mut affine_public_key = self.into_public().0.into_affine();
+        let affine_public_key = self.into_public().0.into_affine();
         let mut public_key_as_bytes = vec![0;  affine_public_key.serialized_size()];
 
         self.into_vartime().0.serialize(&mut secret_key_as_bytes[..]).unwrap();
@@ -72,13 +68,13 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for SecretKey<E> {
         // publishing (s, R) verifying that (s*G = H(R|M)*Publickey + R
         // instead we actually doing H(s*G - H(R|M)*Publickey|M) == H(R|M) == k
         // avoiding one curve addition in expense of a hash.
-        let mut r = <BLSSchnorrPoPGenerator<E,H>>::witness_scalar(self);
+        let mut r = <dyn BLSSchnorrPoPGenerator<E,H>>::witness_scalar(self);
         
         let mut r_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
         r_point *= r; //todo perhaps we need to mandate E to have  a hard coded point
 
         let mut r_point_as_bytes = Vec::<u8>::new();
-        r_point.into_affine().write(&mut r_point_as_bytes);
+        r_point.into_affine().write(&mut r_point_as_bytes).unwrap();
 
         let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(message.0).finalize();
 	    let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
@@ -87,8 +83,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for SecretKey<E> {
         let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap();
         let s = (k * self.into_vartime().0) + r;
 
-        r = E::Scalar::zero();
-        //::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
+        ::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
 
         (s,k)
     }
@@ -106,7 +101,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
         schnorr_point += k_public_key;
 
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
-        schnorr_point.into_affine().write(&mut schnorr_point_as_bytes);
+        schnorr_point.into_affine().write(&mut schnorr_point_as_bytes).unwrap();
 
         let mut scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).chain(message.0).finalize();
 	    let random_scalar = scalar_bytes.as_mut_slice();
@@ -121,27 +116,39 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
 }
 
 #[cfg(test)]
-use rand_core::{RngCore,CryptoRng};
-use crate::single::{Keypair};
 
 mod tests {
-    use super::*;
-    
     #[test]
     fn bls_pop_sign() {
+        use crate::pop::{ProofOfPossessionGenerator};
+        use crate::single::{Keypair};
+        use crate::engine::{ZBLS};
+        use crate::Message;
+        use rand::{thread_rng};
+        use sha2::Sha512;    
+
         let challenge_message = Message::new(b"ctx",b"sign this message, if you really have the secret key");
-        let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        <ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&keypair.secret, challenge_message);
+        let keypair  = Keypair::<ZBLS>::generate(thread_rng());
+        <dyn ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&keypair.secret, challenge_message);
     }
 
     #[test]
     fn bls_pop_sign_and_verify()
     {
+        use rand::{thread_rng};
+        use sha2::Sha512;    
+
+        use crate::single::{Keypair};
+        use crate::engine::{ZBLS};
+        use crate::Message;
+        use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+
+
         let challenge_message = Message::new(b"ctx",b"sign this message, if you really have the secret key");
-        let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
-        let mut secret_key = keypair.secret;
-        let proof_pair = <ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&secret_key, challenge_message);
-        assert!(<ProofOfPossessionVerifier<ZBLS, Sha512>>::verify_pok(&keypair.public, challenge_message, proof_pair), "valid pok does not verify")
+        let keypair  = Keypair::<ZBLS>::generate(thread_rng());
+        let secret_key = keypair.secret;
+        let proof_pair = <dyn ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&secret_key, challenge_message);
+        assert!(<dyn ProofOfPossessionVerifier<ZBLS, Sha512>>::verify_pok(&keypair.public, challenge_message, proof_pair), "valid pok does not verify")
 
     }
     

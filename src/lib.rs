@@ -87,7 +87,6 @@
 #[macro_use]
 extern crate arrayref;
 
-#[macro_use]
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 

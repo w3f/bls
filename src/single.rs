@@ -14,36 +14,27 @@
 //!
 //! We imagine this simplification helps focus on more important
 //! optimizations, like placing `batch_normalization` calls well.
-//! We could exploit `CurveProjective: += _mixed` function
+//! We could exploit `ProjectiveCurve: += _mixed` function
 //! if we had seperate types for affine points, but if doing so 
 //! improved performance enough then we instead suggest tweaking
-//! `CurveProjective::add_mixed` to test for normalized points.
+//! `ProjectiveCurve::add_mixed` to test for normalized points.
 //!
 //! TODO: Add serde support for serialization throughout.  See
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ark_ff::{Field, PrimeField, UniformRand}; // ScalarEngine, SqrtField
-use ark_ff::biginteger::{BigInteger}; // ScalarEngine, SqrtField
-use ark_ff::{SquareRootField};
-use ark_ff::{One, Zero};
+use ark_ff::{UniformRand};
+use ark_ff::{Zero};
 
-//use pairing::{CurveAffine, CurveProjective, EncodedPoint, GroupDecodingError};  // Engine, PrimeField, SqrtField
-use ark_ec::AffineCurve as CurveAffine;
-use ark_ec::ProjectiveCurve as CurveProjective;
-use ark_ec::PairingEngine as  Engine;
+use ark_ec::AffineCurve;
+use ark_ec::ProjectiveCurve;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
-//use ark_serialize_derive::{ CanonicalSerialize};
-//use ark_serialize_derive::CanonicalDeserialize;
 use rand::{Rng, thread_rng, SeedableRng};
-// use rand::prelude::*; // ThreadRng,thread_rng
 use rand_chacha::ChaCha8Rng;
 use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
 
-// use std::borrow::{Borrow,BorrowMut};
 use std::iter::once;
-use std::io;
 
 use super::*;
 
@@ -58,9 +49,7 @@ impl<E: EngineBLS> Clone for SecretKeyVT<E> {
     fn clone(&self) -> Self { SecretKeyVT(self.0) }
 }
 
-// TODO: Serialization
-
-impl<E: EngineBLS> SecretKeyVT<E> where E: UnmutatedKeys {
+impl<E: EngineBLS> SecretKeyVT<E> {
     /// Generate a secret key without side channel protections.
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )
@@ -98,8 +87,8 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-        PublicKey( <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator().mul(self.0) )
-        // let mut g = <E::PublicKeyGroup as CurveProjective>::one();
+        PublicKey( <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator().mul(self.0) )
+        // let mut g = <E::PublicKeyGroup as ProjectiveCurve>::one();
         // g *= self.0;
         // PublicKey(p)
     }
@@ -162,9 +151,7 @@ impl<E: EngineBLS> Clone for SecretKey<E> {
     }
 }
 
-// TODO: Serialization
-
-impl<E: EngineBLS> SecretKey<E> where E: UnmutatedKeys {
+impl<E: EngineBLS> SecretKey<E> where E: EngineBLS {
     /// Generate a secret key that is already split for side channel protection,
     /// but does not apply signed point mutation.
     pub fn generate_dirty<R: Rng>(mut rng: R) -> Self {
@@ -252,15 +239,15 @@ impl<E: EngineBLS> SecretKey<E> {
     /// We do not resplit for side channel protections here since
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
-        let generator = <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
+        let generator = <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
         let mut publickey = generator.mul(self.key[0]);
         publickey += & generator.mul(self.key[1]);
         PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
         /*
-        let mut x = <E::PublicKeyGroup as CurveProjective>::one();
+        let mut x = <E::PublicKeyGroup as ProjectiveCurve>::one();
         x *= self.0;
-        let y = <E::PublicKeyGroup as CurveProjective>::one();
+        let y = <E::PublicKeyGroup as ProjectiveCurve>::one();
         y *= self.1;
         x += &y;
         PublicKey(x)
@@ -356,19 +343,19 @@ macro_rules! serialization {
         impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
             #[inline]
             fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-                let affine_point = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalDeserialize>::deserialize(&mut reader)?;
+                let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize(&mut reader)?;
                 Ok($wrapper(affine_point.into_projective()))
             }
             
             #[inline]
             fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-                let affine_point = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalDeserialize>::deserialize_uncompressed(&mut reader)?;
+                let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize_uncompressed(&mut reader)?;
                 Ok($wrapper(affine_point.into_projective()))
             }
             
             #[inline]
             fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-                let affine_point = <<<E as EngineBLS>::$group as CurveProjective>::Affine as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
+                let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
                 Ok($wrapper(affine_point.into_projective()))
             }
             
@@ -385,13 +372,13 @@ macro_rules! zbls_serialization {
              pub fn to_bytes(&self) -> [u8; $size] {
                  let mut bytes = [0u8; $size];
                  let mut vec_bytes = vec![0;  $size];
-                 self.serialize(&mut vec_bytes[..]);
+                 self.serialize(&mut vec_bytes[..]).unwrap();
                  bytes.copy_from_slice(vec_bytes.as_slice());
                  bytes
              }
 
              pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,SerializationError> {
-                 let mut borrowed_bytes_as_slice : &[u8] = &bytes;
+                 let borrowed_bytes_as_slice : &[u8] = &bytes;
                  $wrapper::<$orientation<ark_bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
              }
          }
@@ -414,7 +401,7 @@ zbls_serialization!(Signature,UsualBLS,96);
 zbls_serialization!(Signature,TinyBLS,48);
 
 impl<E: EngineBLS> Signature<E> {
-    const DESCRIPTION : &'static str = "A BLS signature";
+    //const DESCRIPTION : &'static str = "A BLS signature"; 
 
     /// Verify a single BLS signature
     pub fn verify(&self, message: Message, publickey: &PublicKey<E>) -> bool {
@@ -453,7 +440,7 @@ zbls_serialization!(PublicKey,UsualBLS,48);
 zbls_serialization!(PublicKey,TinyBLS,96);
 
 impl<E: EngineBLS> PublicKey<E> {
-    const DESCRIPTION : &'static str = "A BLS signature";
+    //const DESCRIPTION : &'static str = "A BLS signature";
 
     pub fn verify(&self, message: Message, signature: &Signature<E>) -> bool {
         signature.verify(message,self)
@@ -483,7 +470,7 @@ impl<E: EngineBLS> Clone for KeypairVT<E> {
 
 // TODO: Serialization
 
-impl<E: EngineBLS> KeypairVT<E> where E: UnmutatedKeys {
+impl<E: EngineBLS> KeypairVT<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
         let secret = SecretKeyVT::generate(rng);
@@ -533,7 +520,7 @@ impl<E: EngineBLS> Clone for Keypair<E> {
 
 // TODO: Serialization
 
-impl<E: EngineBLS> Keypair<E> where E: UnmutatedKeys {
+impl<E: EngineBLS> Keypair<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
         let secret = SecretKey::generate(rng);
@@ -614,7 +601,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 impl<E: EngineBLS> SignedMessage<E> {
     #[cfg(test)]
     fn verify_slow(&self) -> bool {
-        let g1_one = <E::PublicKeyGroup as CurveProjective>::Affine::prime_subgroup_generator();
+        let g1_one = <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }
@@ -695,14 +682,17 @@ mod tests {
         SignedMessage { message, publickey, signature }
     }
 
-    pub type TBLS = TinyBLS<ark_bls12_381::Bls12_381>;
+    // Commented to rid of unused warnings
+    // TODO: add a test after making tinybls works
+    
+    // pub type TBLS = TinyBLS<ark_bls12_381::Bls12_381>;
 
-    fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
-        let SignedMessage { message, publickey, signature } = x;
-        let publickey = PublicKey::<TBLS>::from_bytes(publickey.to_bytes()).unwrap();        
-        let signature = Signature::<TBLS>::from_bytes(signature.to_bytes()).unwrap();
-        SignedMessage { message, publickey, signature }
-    }
+    // fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
+    //     let SignedMessage { message, publickey, signature } = x;
+    //     let publickey = PublicKey::<TBLS>::from_bytes(publickey.to_bytes()).unwrap();        
+    //     let signature = Signature::<TBLS>::from_bytes(signature.to_bytes()).unwrap();
+    //     SignedMessage { message, publickey, signature }
+    // }
 
     #[test]
     fn single_messages() {
