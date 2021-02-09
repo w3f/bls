@@ -5,9 +5,9 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
-// use std::hash::Hash;  // Hasher
 
-use pairing::{CurveAffine, CurveProjective};  // Engine, Field, PrimeField, SqrtField
+use ark_ec::ProjectiveCurve;
+use ark_serialize::{CanonicalSerialize};
 
 use super::*;
 
@@ -20,26 +20,26 @@ use super::*;
 pub type PublicKeyProjective<E> = <E as EngineBLS>::PublicKeyGroup;
 
 /// Convenience type alias for affine form of `PublicKeyGroup`
-pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as CurveProjective>::Affine;
+pub type PublicKeyAffine<E> = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::Affine;
 
 /// Convenience type alias for projective form of `SignatureGroup`
 pub type SignatureProjective<E> = <E as EngineBLS>::SignatureGroup;
 
 /// Convenience type alias for affine form of `SignatureGroup`
-pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveProjective>::Affine;
+pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as ProjectiveCurve>::Affine;
 
 
 /// Simple unoptimized BLS signature verification.  Useful for testing.
 pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
-    let signature = s.signature().0.into_affine().prepare();
+    let signature = S::E::prepare_signature(s.signature().0);
     let prepared = s.messages_and_publickeys()
         .map(|(message,public_key)| {
-            (public_key.borrow().0.into_affine().prepare(),
-             message.borrow().hash_to_signature_curve::<S::E>().into_affine().prepare())
+            (S::E::prepare_public_key(public_key.borrow().0),
+             S::E::prepare_signature(message.borrow().hash_to_signature_curve::<S::E>()))
         }).collect::<Vec<(_,_)>>();
     S::E::verify_prepared(
-        & signature,
-        prepared.iter().map(|(m,pk)| (m,pk))
+        signature,
+        prepared.iter()
     )
 }
 
@@ -67,11 +67,11 @@ pub fn verify_simple<S: Signed>(s: S) -> bool {
     <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(gpk.as_mut_slice());
     gms.push(signature);
     <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(gms.as_mut_slice());
-    let signature = gms.pop().unwrap().into_affine().prepare();
+    let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(gms.pop().unwrap());
     let prepared = gpk.iter().zip(gms)
-        .map(|(pk,m)| { (pk.into_affine().prepare(), m.into_affine().prepare()) })
+        .map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(pk.into_affine()), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
         .collect::<Vec<(_,_)>>();
-    S::E::verify_prepared( &signature, prepared.iter().map(|(m,pk)| (m,pk)) )
+    S::E::verify_prepared( signature, prepared.iter())
 }
 
 
@@ -116,34 +116,41 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     type AA<E> = (PublicKeyAffine<E>, SignatureProjective<E>);
     let mut pks_n_ms = HashMap::with_capacity(l);
     for (pk,m) in publickeys.drain(..)
-                            .map(|pk| pk.into_affine())
+        .map(|pk| pk.into_affine() )
                             .zip(messages.drain(..)) 
     {
-        pks_n_ms.entry(pk.into_uncompressed())
-                .and_modify(|(_pk0,m0): &mut AA<S::E>| m0.add_assign(&m) )
+        let mut pk_uncompressed = vec![0;  pk.uncompressed_size()];        
+        pk.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
+        pks_n_ms.entry(pk_uncompressed)
+            .and_modify(|(_pk0,m0):  &mut AA<S::E>| {*m0 += m;} )
                 .or_insert((pk,m));
     }
 
     let mut publickeys = Vec::with_capacity(l);
     for (_,(pk,m)) in pks_n_ms.drain() {
         messages.push(m);
-        publickeys.push(pk.prepare());
+        publickeys.push(pk.clone());
     }
 
     // We finally normalize the messages and signature
+
     messages.push(signature);
     <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(messages.as_mut_slice());
-    let signature = messages.pop().unwrap().into_affine().prepare();
+    let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(messages.pop().unwrap().into_affine());
     // TODO: Assess if we could cache normalized message hashes anyplace
     // using interior mutability, but probably this does not work well
     // with our optimization of collecting messages with thesame signer.
 
     // And verify the aggregate signature.
-    let messages = messages.iter().map(|m| m.into_affine().prepare()).collect::<Vec<_>>();
-    let prepared = publickeys.iter().zip(&messages);
-    S::E::verify_prepared( &signature, prepared )
-}
+    let  prepared = publickeys.iter().zip(messages).map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(*pk), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
+        .collect::<Vec<(_,_)>>();
 
+    S::E::verify_prepared( signature, prepared.iter() )
+
+    //let prepared = publickeys.iter().zip(&messages);
+    //S::E::verify_prepared( &signature, prepared )
+
+}
 
 /*
 

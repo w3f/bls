@@ -5,9 +5,10 @@
 
 
 use std::borrow::{Borrow,BorrowMut};
-use std::iter::{once};  // FromIterator
+use std::iter::{once};
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+use ark_ff::{Zero};
+use ark_ec::ProjectiveCurve;
 
 use super::*;
 use super::single::SignedMessage;
@@ -208,7 +209,7 @@ where
                     debug_assert!(false, "Incorrect SignerTable implementation with duplicate publickeys" );
                     continue;
                 }
-                publickey.add_assign(&pop_pk.0);
+                publickey += &pop_pk.0;
             }
         }
         once((self.message.clone(), PublicKey(publickey)))
@@ -247,7 +248,7 @@ where
         let s = &mut self.signers.borrow_mut()[i / 8];
         if *s & b != 0 { return Err(SignerTableError::RepeatedSigners); }
         *s |= b;
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
         Ok(())
     }
 
@@ -279,7 +280,7 @@ where
         for (x,y) in self.signers.borrow_mut().iter_mut().zip(other.signers.borrow()) {
             *x |= y;
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += &other.signature.0;
         Ok(())
     }
 }
@@ -338,7 +339,7 @@ where
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
         for signers in self.signers.iter().rev().map(|signers| signers.borrow()) {
-            publickey.double();
+            publickey.double_in_place();
             for i in 0..8*signers.len() {
                 if signers[i / 8] & (1 << (i % 8)) != 0 {
                     let pop_pk = self.proofs_of_possession.lookup(i).unwrap();
@@ -347,7 +348,7 @@ where
                         debug_assert!(false, "Incorrect SignerTable implementation with duplicate publickeys" );
                         continue;
                     }
-                    publickey.add_assign(&pop_pk.0);
+                    publickey += &pop_pk.0;
                 }
             }
         }
@@ -397,11 +398,14 @@ where
         }
     }
 
+    /*
+    commented out to rid of unused warning
+    TODO: add test coverage to trim and uncomment
     fn trim(&mut self) {
         let empty = |s: &POP::Signers| s.borrow().iter().all(|b| *b == 0u8);
         let c = self.signers.len() - self.signers.iter().rev().take_while(|s| empty(&*s)).count();
         self.signers.truncate(c)
-    }
+    }*/
 
     fn test_count(&self, count: usize) -> Result<(),SignerTableError> {
         if count >= self.max_duplicates || count >= usize::max_value() {
@@ -446,7 +450,7 @@ where
         let count = self.get_count(i) + 1;
         self.test_count(count) ?;
         self.set_count(i,count);
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
         Ok(())
     }
 
@@ -485,7 +489,7 @@ where
             let count = self.get_count(index);
             if os[index / 8] & (1 << (index % 8)) != 0 { self.set_count(index,count+1); }
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += &other.signature.0;
         Ok(())
     }
 
@@ -512,7 +516,7 @@ where
         for index in 0..8*self.signers[0].borrow().len() {
             self.set_count(index, self.get_count(index) + other.get_count(index));
         }
-        self.signature.0.add_assign(&other.signature.0);
+        self.signature.0 += &other.signature.0;
         Ok(())
     }    
 }
@@ -595,7 +599,7 @@ mod tests {
         assert!( countsig.verify() ); 
         for (i,sig) in sigs1.iter().enumerate().take(3) {
             assert!( countsig.add(sig).is_ok() == (i<4));
-            assert!( countsig.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
+            assert!( countsig.verify(), "countsig failed at sig {}",i );  // verifiers::verify_with_distinct_messages(&dms,true)
         }
         assert!( countsig.add_bitsig(&bitsig1a).is_ok() );
         assert!( countsig.add_bitsig(&bitsig1a).is_ok() );

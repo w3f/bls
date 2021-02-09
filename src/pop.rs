@@ -34,11 +34,12 @@
 // Aside about proof-of-possession in the DLOG setting
 // https://twitter.com/btcVeg/status/1085490561082183681
 
+use digest::Digest;
 
 use std::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
-use pairing::{CurveProjective}; // CurveAffine, Engine
+use ark_ff::{Zero};
 
 use super::*;
 use super::verifiers::verify_with_distinct_messages;
@@ -80,6 +81,23 @@ use super::verifiers::verify_with_distinct_messages;
 // but this sounds complex or worse fragile.
 //
 // TODO: Implement gaussian elimination verification scheme.
+
+pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
+
+use single::PublicKey;
+/// ProofOfPossion trait which should be implemented by secret
+pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
+    /// The proof of possession generator is supposed to
+    /// to produce a schnoor signature of the message using
+    /// the secret key which it claim to possess.
+    fn generate_pok(&self, message: Message) -> SchnorrProof<E>;
+}
+
+/// This should be implemented by public key
+pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
+    fn verify_pok(&self, message: Message, schnorr_proof: SchnorrProof<E>) -> bool;
+}
+
 #[derive(Clone)]
 pub struct BatchAssumingProofsOfPossession<E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
@@ -99,7 +117,7 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
     /// Useful for constructing an aggregate signature, but we
     /// recommend instead using a custom types like `BitPoPSignedMessage`.
     pub fn add_signature(&mut self, signature: &Signature<E>) {
-        self.signature.0.add_assign(&signature.0);
+        self.signature.0 += &signature.0;
     }
 
     /// Add only a `Message` and `PublicKey<E>` to our internal data.
@@ -108,7 +126,7 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
     /// recommend instead using a custom types like `BitPoPSignedMessage`.
     pub fn add_message_n_publickey(&mut self, message: &Message, publickey: &PublicKey<E>) {
         self.messages_n_publickeys.entry(*message)
-            .and_modify(|pk0| pk0.0.add_assign(&publickey.0) )
+            .and_modify(|pk0| pk0.0 += &publickey.0 )
             .or_insert(*publickey);
     }
 
