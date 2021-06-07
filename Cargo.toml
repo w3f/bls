@@ -35,8 +35,5 @@ version = "^1.0"
 default-features = false
 optional = true
 
-[dev-dependencies]
-rand= "0.7.3"
-
 [dependencies.thiserror]
 version = "1.0.10"
