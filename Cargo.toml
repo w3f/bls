@@ -24,16 +24,6 @@ ark-serialize = { version = "0.3", default-features = false, features = [ "deriv
 ark-serialize-derive = { version = "0.3", default-features = false }
 ark-bls12-381 = { version = "0.3", default-features = false, features = [ "curve" ] }
 
-#for cleaning up secret keys
-[dependencies.zeroize]
-version = "1.0.0"
-default-features = false
-features = ["zeroize_derive"]
-
-[dependencies.serde]
-version = "^1.0"
-default-features = false
-optional = true
-
-[dependencies.thiserror]
-version = "1.0.10"
+zeroize = { version = "1.0", default-features = false, features = [ "zeroize_derive" ] }
+serde = { version = "1.0", default-features = false, optional = true }
+thiserror = "1.0"
