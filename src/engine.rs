@@ -184,6 +184,7 @@ pub trait EngineBLS {
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381>;
+pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 // pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});
