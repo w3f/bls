@@ -23,6 +23,7 @@ ark-ec = { version = "0.3", default-features = false }
 ark-serialize = { version = "0.3", default-features = false, features = [ "derive" ] }
 ark-serialize-derive = { version = "0.3", default-features = false }
 ark-bls12-381 = { version = "0.3", default-features = false, features = [ "curve" ] }
+ark-bls12-377 = { version = "0.3", default-features = false, features = [ "curve" ] }
 
 zeroize = { version = "1.0", default-features = false, features = [ "zeroize_derive" ] }
 serde = { version = "1.0", default-features = false, optional = true }
