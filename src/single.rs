@@ -37,7 +37,7 @@ use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
 use std::iter::once;
 
 use super::*;
-
+use ark_bls12_381::Bls12_381;
 // //////////////// SECRETS //////////////// //
 
 /// Secret signing key lacking the side channel protections from
@@ -310,7 +310,7 @@ fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDeco
     }
 }
 
-macro_rules! serialization {
+macro_rules!  serialization {
     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
         impl<E> CanonicalSerialize for $wrapper<E> where E: $se {
@@ -338,6 +338,7 @@ macro_rules! serialization {
                 self.0.into_affine().uncompressed_size().serialize_unchecked(&mut writer)?;
                 Ok(())
             }
+            
         }
                 
         impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
@@ -360,14 +361,14 @@ macro_rules! serialization {
             }
             
         }
+        
     }
 }
 
 
-macro_rules! zbls_serialization {
-     ($wrapper:tt,$orientation:tt,$size:expr) => {
-
-         impl $wrapper<$orientation<ark_bls12_381::Bls12_381>> {
+macro_rules! to_and_from_byte_helpers {
+     ($wrapper:tt,$orientation:tt,$pe:tt,$size:expr) => {
+         impl $wrapper<$orientation<$pe>> {
              //ask Jeff VVVV
              pub fn to_bytes(&self) -> [u8; $size] {
                  let mut bytes = [0u8; $size];
@@ -381,7 +382,7 @@ macro_rules! zbls_serialization {
                  let borrowed_bytes_as_slice : &[u8] = &bytes;
                  $wrapper::<$orientation<ark_bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
              }
-         }
+    }
 
     }
 }  // macro_rules!
@@ -397,8 +398,8 @@ pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
 serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
-zbls_serialization!(Signature,UsualBLS,96);
-zbls_serialization!(Signature,TinyBLS,48);
+to_and_from_byte_helpers!(Signature,UsualBLS,Bls12_381,96);
+to_and_from_byte_helpers!(Signature,TinyBLS,Bls12_381,48);
 
 impl<E: EngineBLS> Signature<E> {
     //const DESCRIPTION : &'static str = "A BLS signature"; 
@@ -436,8 +437,9 @@ broken_derives!(PublicKey);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,0);
 serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
 //ask Jeff: Should I trust these size or ask the CanonicalSerialize to decide for us
-zbls_serialization!(PublicKey,UsualBLS,48);
-zbls_serialization!(PublicKey,TinyBLS,96);
+//you can't because it should be decided at compile time.
+to_and_from_byte_helpers!(PublicKey,UsualBLS,Bls12_381,48);
+to_and_from_byte_helpers!(PublicKey,TinyBLS,Bls12_381,96);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
