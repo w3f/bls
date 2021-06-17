@@ -38,6 +38,8 @@ use std::iter::once;
 
 use super::*;
 use ark_bls12_381::Bls12_381;
+use ark_bls12_377::Bls12_377;
+
 // //////////////// SECRETS //////////////// //
 
 /// Secret signing key lacking the side channel protections from
@@ -380,7 +382,7 @@ macro_rules! to_and_from_byte_helpers {
 
              pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,SerializationError> {
                  let borrowed_bytes_as_slice : &[u8] = &bytes;
-                 $wrapper::<$orientation<ark_bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
+                 $wrapper::<$orientation<$pe>>::deserialize(borrowed_bytes_as_slice)
              }
     }
 
@@ -400,6 +402,8 @@ broken_derives!(Signature);  // Actually the derive works for this one, not sure
 serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
 to_and_from_byte_helpers!(Signature,UsualBLS,Bls12_381,96);
 to_and_from_byte_helpers!(Signature,TinyBLS,Bls12_381,48);
+
+to_and_from_byte_helpers!(Signature,UsualBLS,Bls12_377,96);
 
 impl<E: EngineBLS> Signature<E> {
     //const DESCRIPTION : &'static str = "A BLS signature"; 
@@ -440,6 +444,8 @@ serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
 //you can't because it should be decided at compile time.
 to_and_from_byte_helpers!(PublicKey,UsualBLS,Bls12_381,48);
 to_and_from_byte_helpers!(PublicKey,TinyBLS,Bls12_381,96);
+
+to_and_from_byte_helpers!(PublicKey,UsualBLS,Bls12_377,48);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
@@ -676,11 +682,17 @@ impl<E: EngineBLS> SignedMessage<E> {
 mod tests {
     use super::*;
     
-
     fn zbls_usual_bytes_test(x: SignedMessage<ZBLS>) -> SignedMessage<ZBLS> {
         let SignedMessage { message, publickey, signature } = x;
         let publickey = PublicKey::<ZBLS>::from_bytes(publickey.to_bytes()).unwrap();
         let signature = Signature::<ZBLS>::from_bytes(signature.to_bytes()).unwrap();
+        SignedMessage { message, publickey, signature }
+    }
+
+    fn bls377_usual_bytes_test(x: SignedMessage<BLS377>) -> SignedMessage<BLS377> {
+        let SignedMessage { message, publickey, signature } = x;
+        let publickey = PublicKey::<BLS377>::from_bytes(publickey.to_bytes()).unwrap();
+        let signature = Signature::<BLS377>::from_bytes(signature.to_bytes()).unwrap();
         SignedMessage { message, publickey, signature }
     }
 
@@ -697,7 +709,7 @@ mod tests {
     // }
 
     #[test]
-    fn single_messages() {
+    fn single_messages_zbls() {
         let good = Message::new(b"ctx",b"test message");
 
         let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
@@ -736,4 +748,46 @@ mod tests {
         assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
                 "Verification of a signature on a different message passed!");
     }
+
+    #[test]
+    fn single_messages_bls377() {
+        let good = Message::new(b"ctx",b"test message");
+
+        let mut keypair  = Keypair::<BLS377>::generate(thread_rng());
+        let good_sig0 = keypair.sign(good);
+        let good_sig = bls377_usual_bytes_test(good_sig0);
+        assert!(good_sig.verify_slow());
+
+        let keypair_vt = keypair.into_vartime();
+        assert!( keypair_vt.secret.0 == keypair_vt.into_split(thread_rng()).into_vartime().secret.0 );
+        assert!( good_sig == keypair.sign(good) );
+        assert!( good_sig == keypair_vt.sign(good) );
+
+        let bad = Message::new(b"ctx",b"wrong message");
+        let bad_sig0 = keypair.sign(bad);
+	let bad_sig = bls377_usual_bytes_test(bad_sig0);
+        assert!( bad_sig == keypair.into_vartime().sign(bad) );
+
+        assert!( bad_sig.verify() );
+
+        let another = Message::new(b"ctx",b"another message");
+        let another_sig = keypair.sign(another);
+        assert!( another_sig == keypair.into_vartime().sign(another) );
+        assert!( another_sig.verify() );
+
+	
+        assert!(keypair.public.verify(good, &good_sig.signature),
+                "Verification of a valid signature failed!");
+	
+	assert!(good != bad, "good == bad");
+	assert!(good_sig.signature != bad_sig.signature, "good sig == bad sig");
+	
+        assert!(!keypair.public.verify(good, &bad_sig.signature),
+                "Verification of a signature on a different message passed!");
+        assert!(!keypair.public.verify(bad, &good_sig.signature),
+                "Verification of a signature on a different message passed!");
+        assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
+                "Verification of a signature on a different message passed!");
+    }
+
 }
