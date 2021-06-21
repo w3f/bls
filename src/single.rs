@@ -367,16 +367,14 @@ macro_rules!  serialization {
     }
 }
 
-
+//TODO: when const generic becomes stable we get the size from the trait and merge this
+//with serialze macro
 macro_rules! to_and_from_byte_helpers {
      ($wrapper:tt,$orientation:tt,$pe:tt,$size:expr) => {
          impl $wrapper<$orientation<$pe>> {
-             //ask Jeff VVVV
              pub fn to_bytes(&self) -> [u8; $size] {
                  let mut bytes = [0u8; $size];
-                 let mut vec_bytes = vec![0;  $size];
-                 self.serialize(&mut vec_bytes[..]).unwrap();
-                 bytes.copy_from_slice(vec_bytes.as_slice());
+                 self.serialize(&mut bytes[..]).unwrap();
                  bytes
              }
 
@@ -708,6 +706,7 @@ mod tests {
     //     SignedMessage { message, publickey, signature }
     // }
 
+    //TODO make the single_messages polymorphic over the pairing engine 
     #[test]
     fn single_messages_zbls() {
         let good = Message::new(b"ctx",b"test message");
