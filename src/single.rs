@@ -26,7 +26,7 @@
 use ark_ff::{UniformRand};
 use ark_ff::{Zero};
 
-use ark_ec::AffineCurve;
+use ark_ec::{AffineCurve, PairingEngine};
 use ark_ec::ProjectiveCurve;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
@@ -339,7 +339,7 @@ macro_rules!  serialization {
             fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
                 self.0.into_affine().uncompressed_size().serialize_unchecked(&mut writer)?;
                 Ok(())
-            }
+            }           
             
         }
                 
@@ -367,8 +367,37 @@ macro_rules!  serialization {
     }
 }
 
+
+// pub trait BLSWrapper:
+//      CanonicalSerialize +
+//      CanonicalDeserialize
+
+// {
+//       fn to_bytes(&self) -> &[u8];
+//       fn from_bytes(bytes: &[u8]) -> Result<Self,SerializationError>;
+// }
+
+// impl BLSWrapper {
+//      pub fn to_bytes(&self) -> &[u8] {
+//          let affine_representation = self.0.into_affine();
+//          let mut serialized_representation = vec![0; affine_representation.uncompressed_size()];
+//          affine_representation.serialize_uncompressed(&mut serialized_representation[..]).unwrap();
+
+//          return serialized_representation[..];
+
+//      }
+
+//      pub fn from_bytes(&self, bytes: &[u8]) -> Result<Self,SerializationError> {
+//          let borrowed_bytes_as_slice : &[u8] = &bytes;
+//          Self::deserialize(borrowed_bytes_as_slice)
+//      }
+
+// }
+
 //TODO: when const generic becomes stable we get the size from the trait and merge this
-//with serialze macro
+//with serialze macro.
+//TODO: even better one can have a trait like this and implement it for all desired wrappers
+
 macro_rules! to_and_from_byte_helpers {
      ($wrapper:tt,$orientation:tt,$pe:tt,$size:expr) => {
          impl $wrapper<$orientation<$pe>> {
@@ -386,6 +415,7 @@ macro_rules! to_and_from_byte_helpers {
 
     }
 }  // macro_rules!
+
 
 // //////// END MACROS //////// //
 
@@ -678,22 +708,25 @@ impl<E: EngineBLS> SignedMessage<E> {
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::PairingEngine;
+
     use super::*;
+
+    fn bls_engine_bytes_test<E: PairingEngine>(x: SignedMessage<UsualBLS<E>>) -> SignedMessage<UsualBLS<E>> {
+        let SignedMessage { message, publickey, signature } = x;
+
+        let mut serialized_public_key = vec![0; publickey.uncompressed_size()];
+        publickey.serialize(&mut serialized_public_key[..]).unwrap();
+        let publickey = PublicKey::<UsualBLS<E>>::deserialize(serialized_public_key.as_slice()).unwrap();
+
+        let mut serialized_signature = vec![0; signature.uncompressed_size()];
+        signature.serialize(&mut serialized_signature[..]).unwrap();
+        let signature = Signature::<UsualBLS<E>>::deserialize(serialized_signature.as_slice()).unwrap();
+        
+        SignedMessage { message, publickey, signature }
+        
+    }
     
-    fn zbls_usual_bytes_test(x: SignedMessage<ZBLS>) -> SignedMessage<ZBLS> {
-        let SignedMessage { message, publickey, signature } = x;
-        let publickey = PublicKey::<ZBLS>::from_bytes(publickey.to_bytes()).unwrap();
-        let signature = Signature::<ZBLS>::from_bytes(signature.to_bytes()).unwrap();
-        SignedMessage { message, publickey, signature }
-    }
-
-    fn bls377_usual_bytes_test(x: SignedMessage<BLS377>) -> SignedMessage<BLS377> {
-        let SignedMessage { message, publickey, signature } = x;
-        let publickey = PublicKey::<BLS377>::from_bytes(publickey.to_bytes()).unwrap();
-        let signature = Signature::<BLS377>::from_bytes(signature.to_bytes()).unwrap();
-        SignedMessage { message, publickey, signature }
-    }
-
     // Commented to rid of unused warnings
     // TODO: add a test after making tinybls works
     
@@ -706,14 +739,16 @@ mod tests {
     //     SignedMessage { message, publickey, signature }
     // }
 
-    //TODO make the single_messages polymorphic over the pairing engine 
-    #[test]
-    fn single_messages_zbls() {
+    // bls_engine_bytes_tester!(UsualBLS, Bls12_381, 48);
+    // bls_engine_bytes_tester!(UsualBLS, Bls12_377, 48);
+    
+    fn test_single_bls_message<E: PairingEngine>() {
+
         let good = Message::new(b"ctx",b"test message");
 
-        let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
+        let mut keypair  = Keypair::<UsualBLS<E>>::generate(thread_rng());
         let good_sig0 = keypair.sign(good);
-        let good_sig = zbls_usual_bytes_test(good_sig0);
+        let good_sig = bls_engine_bytes_test(good_sig0);
         assert!(good_sig.verify_slow());
 
         let keypair_vt = keypair.into_vartime();
@@ -723,7 +758,7 @@ mod tests {
 
         let bad = Message::new(b"ctx",b"wrong message");
         let bad_sig0 = keypair.sign(bad);
-	let bad_sig = zbls_usual_bytes_test(bad_sig0);
+	let bad_sig = bls_engine_bytes_test(bad_sig0);
         assert!( bad_sig == keypair.into_vartime().sign(bad) );
 
         assert!( bad_sig.verify() );
@@ -746,47 +781,17 @@ mod tests {
                 "Verification of a signature on a different message passed!");
         assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
                 "Verification of a signature on a different message passed!");
+    }
+
+    #[test]
+    fn single_messages_zbls() {
+        test_single_bls_message::<Bls12_381>();
     }
 
     #[test]
     fn single_messages_bls377() {
-        let good = Message::new(b"ctx",b"test message");
-
-        let mut keypair  = Keypair::<BLS377>::generate(thread_rng());
-        let good_sig0 = keypair.sign(good);
-        let good_sig = bls377_usual_bytes_test(good_sig0);
-        assert!(good_sig.verify_slow());
-
-        let keypair_vt = keypair.into_vartime();
-        assert!( keypair_vt.secret.0 == keypair_vt.into_split(thread_rng()).into_vartime().secret.0 );
-        assert!( good_sig == keypair.sign(good) );
-        assert!( good_sig == keypair_vt.sign(good) );
-
-        let bad = Message::new(b"ctx",b"wrong message");
-        let bad_sig0 = keypair.sign(bad);
-	let bad_sig = bls377_usual_bytes_test(bad_sig0);
-        assert!( bad_sig == keypair.into_vartime().sign(bad) );
-
-        assert!( bad_sig.verify() );
-
-        let another = Message::new(b"ctx",b"another message");
-        let another_sig = keypair.sign(another);
-        assert!( another_sig == keypair.into_vartime().sign(another) );
-        assert!( another_sig.verify() );
-
-	
-        assert!(keypair.public.verify(good, &good_sig.signature),
-                "Verification of a valid signature failed!");
-	
-	assert!(good != bad, "good == bad");
-	assert!(good_sig.signature != bad_sig.signature, "good sig == bad sig");
-	
-        assert!(!keypair.public.verify(good, &bad_sig.signature),
-                "Verification of a signature on a different message passed!");
-        assert!(!keypair.public.verify(bad, &good_sig.signature),
-                "Verification of a signature on a different message passed!");
-        assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
-                "Verification of a signature on a different message passed!");
+        test_single_bls_message::<Bls12_377>();
     }
+  
 
 }
