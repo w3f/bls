@@ -26,7 +26,7 @@
 use ark_ff::{UniformRand};
 use ark_ff::{Zero};
 
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_ec::AffineCurve;
 use ark_ec::ProjectiveCurve;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
@@ -37,9 +37,6 @@ use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
 use std::iter::once;
 
 use super::*;
-use ark_bls12_381::Bls12_381;
-use ark_bls12_377::Bls12_377;
-
 // //////////////// SECRETS //////////////// //
 
 /// Secret signing key lacking the side channel protections from
@@ -368,54 +365,28 @@ macro_rules!  serialization {
 }
 
 
-// pub trait BLSWrapper:
-//      CanonicalSerialize +
-//      CanonicalDeserialize
+pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
+    CanonicalSerialize +
+    CanonicalDeserialize 
+{
 
-// {
-//       fn to_bytes(&self) -> &[u8];
-//       fn from_bytes(bytes: &[u8]) -> Result<Self,SerializationError>;
-// }
+     //TODO: when const generic becomes stable we get the size from the trait and return
+     //constant size array
+     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
+          let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
+          self.serialize(&mut serialized_representation[..]).unwrap();
 
-// impl BLSWrapper {
-//      pub fn to_bytes(&self) -> &[u8] {
-//          let affine_representation = self.0.into_affine();
-//          let mut serialized_representation = vec![0; affine_representation.uncompressed_size()];
-//          affine_representation.serialize_uncompressed(&mut serialized_representation[..]).unwrap();
+          return serialized_representation;
 
-//          return serialized_representation[..];
+     }
 
-//      }
+    fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
+        Self::deserialize(bytes.as_slice())
+     }
+ }
 
-//      pub fn from_bytes(&self, bytes: &[u8]) -> Result<Self,SerializationError> {
-//          let borrowed_bytes_as_slice : &[u8] = &bytes;
-//          Self::deserialize(borrowed_bytes_as_slice)
-//      }
-
-// }
-
-//TODO: when const generic becomes stable we get the size from the trait and merge this
-//with serialze macro.
-//TODO: even better one can have a trait like this and implement it for all desired wrappers
-
-macro_rules! to_and_from_byte_helpers {
-     ($wrapper:tt,$orientation:tt,$pe:tt,$size:expr) => {
-         impl $wrapper<$orientation<$pe>> {
-             pub fn to_bytes(&self) -> [u8; $size] {
-                 let mut bytes = [0u8; $size];
-                 self.serialize(&mut bytes[..]).unwrap();
-                 bytes
-             }
-
-             pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,SerializationError> {
-                 let borrowed_bytes_as_slice : &[u8] = &bytes;
-                 $wrapper::<$orientation<$pe>>::deserialize(borrowed_bytes_as_slice)
-             }
-    }
-
-    }
-}  // macro_rules!
-
+impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
+impl <E: EngineBLS> SerializableToBytes<96> for PublicKey<E>  {}
 
 // //////// END MACROS //////// //
 
@@ -428,10 +399,6 @@ pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
 serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
-to_and_from_byte_helpers!(Signature,UsualBLS,Bls12_381,96);
-to_and_from_byte_helpers!(Signature,TinyBLS,Bls12_381,48);
-
-to_and_from_byte_helpers!(Signature,UsualBLS,Bls12_377,96);
 
 impl<E: EngineBLS> Signature<E> {
     //const DESCRIPTION : &'static str = "A BLS signature"; 
@@ -466,14 +433,7 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // }
 
 broken_derives!(PublicKey);
-// borrow_wrapper!(PublicKey,PublicKeyGroup,0);
 serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
-//ask Jeff: Should I trust these size or ask the CanonicalSerialize to decide for us
-//you can't because it should be decided at compile time.
-to_and_from_byte_helpers!(PublicKey,UsualBLS,Bls12_381,48);
-to_and_from_byte_helpers!(PublicKey,TinyBLS,Bls12_381,96);
-
-to_and_from_byte_helpers!(PublicKey,UsualBLS,Bls12_377,48);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
@@ -709,19 +669,16 @@ impl<E: EngineBLS> SignedMessage<E> {
 #[cfg(test)]
 mod tests {
     use ark_ec::PairingEngine;
+    use ark_bls12_381::Bls12_381;
+    use ark_bls12_377::Bls12_377;
 
     use super::*;
 
     fn bls_engine_bytes_test<E: PairingEngine>(x: SignedMessage<UsualBLS<E>>) -> SignedMessage<UsualBLS<E>> {
         let SignedMessage { message, publickey, signature } = x;
 
-        let mut serialized_public_key = vec![0; publickey.uncompressed_size()];
-        publickey.serialize(&mut serialized_public_key[..]).unwrap();
-        let publickey = PublicKey::<UsualBLS<E>>::deserialize(serialized_public_key.as_slice()).unwrap();
-
-        let mut serialized_signature = vec![0; signature.uncompressed_size()];
-        signature.serialize(&mut serialized_signature[..]).unwrap();
-        let signature = Signature::<UsualBLS<E>>::deserialize(serialized_signature.as_slice()).unwrap();
+        let publickey = PublicKey::<UsualBLS<E>>::from_bytes(&publickey.to_bytes()).unwrap();
+        let signature = Signature::<UsualBLS<E>>::from_bytes(&signature.to_bytes()).unwrap();
         
         SignedMessage { message, publickey, signature }
         

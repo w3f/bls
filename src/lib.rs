@@ -81,8 +81,8 @@
 //!
 
 
-// #![feature(generic_associated_types)]
 #![feature(associated_type_defaults)]
+#![feature(array_methods)]
 
 #[macro_use]
 extern crate arrayref;
