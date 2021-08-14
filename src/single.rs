@@ -37,7 +37,6 @@ use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
 use std::iter::once;
 
 use super::*;
-
 // //////////////// SECRETS //////////////// //
 
 /// Secret signing key lacking the side channel protections from
@@ -310,7 +309,7 @@ fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDeco
     }
 }
 
-macro_rules! serialization {
+macro_rules!  serialization {
     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
         impl<E> CanonicalSerialize for $wrapper<E> where E: $se {
@@ -337,7 +336,8 @@ macro_rules! serialization {
             fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
                 self.0.into_affine().uncompressed_size().serialize_unchecked(&mut writer)?;
                 Ok(())
-            }
+            }           
+            
         }
                 
         impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
@@ -360,31 +360,33 @@ macro_rules! serialization {
             }
             
         }
+        
     }
 }
 
 
-macro_rules! zbls_serialization {
-     ($wrapper:tt,$orientation:tt,$size:expr) => {
+pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
+    CanonicalSerialize +
+    CanonicalDeserialize 
+{
 
-         impl $wrapper<$orientation<ark_bls12_381::Bls12_381>> {
-             //ask Jeff VVVV
-             pub fn to_bytes(&self) -> [u8; $size] {
-                 let mut bytes = [0u8; $size];
-                 let mut vec_bytes = vec![0;  $size];
-                 self.serialize(&mut vec_bytes[..]).unwrap();
-                 bytes.copy_from_slice(vec_bytes.as_slice());
-                 bytes
-             }
+     //TODO: when const generic becomes stable we get the size from the trait and return
+     //constant size array
+     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
+          let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
+          self.serialize(&mut serialized_representation[..]).unwrap();
 
-             pub fn from_bytes(bytes: [u8; $size]) -> Result<Self,SerializationError> {
-                 let borrowed_bytes_as_slice : &[u8] = &bytes;
-                 $wrapper::<$orientation<ark_bls12_381::Bls12_381>>::deserialize(borrowed_bytes_as_slice)
-             }
-         }
+          return serialized_representation;
 
-    }
-}  // macro_rules!
+     }
+
+    fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
+        Self::deserialize(bytes.as_slice())
+     }
+ }
+
+impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
+impl <E: EngineBLS> SerializableToBytes<96> for PublicKey<E>  {}
 
 // //////// END MACROS //////// //
 
@@ -397,8 +399,6 @@ pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
 serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
-zbls_serialization!(Signature,UsualBLS,96);
-zbls_serialization!(Signature,TinyBLS,48);
 
 impl<E: EngineBLS> Signature<E> {
     //const DESCRIPTION : &'static str = "A BLS signature"; 
@@ -433,11 +433,7 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // }
 
 broken_derives!(PublicKey);
-// borrow_wrapper!(PublicKey,PublicKeyGroup,0);
 serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
-//ask Jeff: Should I trust these size or ask the CanonicalSerialize to decide for us
-zbls_serialization!(PublicKey,UsualBLS,48);
-zbls_serialization!(PublicKey,TinyBLS,96);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
@@ -672,16 +668,22 @@ impl<E: EngineBLS> SignedMessage<E> {
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::PairingEngine;
+    use ark_bls12_381::Bls12_381;
+    use ark_bls12_377::Bls12_377;
+
     use super::*;
-    
 
-    fn zbls_usual_bytes_test(x: SignedMessage<ZBLS>) -> SignedMessage<ZBLS> {
+    fn bls_engine_bytes_test<E: PairingEngine>(x: SignedMessage<UsualBLS<E>>) -> SignedMessage<UsualBLS<E>> {
         let SignedMessage { message, publickey, signature } = x;
-        let publickey = PublicKey::<ZBLS>::from_bytes(publickey.to_bytes()).unwrap();
-        let signature = Signature::<ZBLS>::from_bytes(signature.to_bytes()).unwrap();
-        SignedMessage { message, publickey, signature }
-    }
 
+        let publickey = PublicKey::<UsualBLS<E>>::from_bytes(&publickey.to_bytes()).unwrap();
+        let signature = Signature::<UsualBLS<E>>::from_bytes(&signature.to_bytes()).unwrap();
+        
+        SignedMessage { message, publickey, signature }
+        
+    }
+    
     // Commented to rid of unused warnings
     // TODO: add a test after making tinybls works
     
@@ -694,13 +696,16 @@ mod tests {
     //     SignedMessage { message, publickey, signature }
     // }
 
-    #[test]
-    fn single_messages() {
+    // bls_engine_bytes_tester!(UsualBLS, Bls12_381, 48);
+    // bls_engine_bytes_tester!(UsualBLS, Bls12_377, 48);
+    
+    fn test_single_bls_message<E: PairingEngine>() {
+
         let good = Message::new(b"ctx",b"test message");
 
-        let mut keypair  = Keypair::<ZBLS>::generate(thread_rng());
+        let mut keypair  = Keypair::<UsualBLS<E>>::generate(thread_rng());
         let good_sig0 = keypair.sign(good);
-        let good_sig = zbls_usual_bytes_test(good_sig0);
+        let good_sig = bls_engine_bytes_test(good_sig0);
         assert!(good_sig.verify_slow());
 
         let keypair_vt = keypair.into_vartime();
@@ -710,7 +715,7 @@ mod tests {
 
         let bad = Message::new(b"ctx",b"wrong message");
         let bad_sig0 = keypair.sign(bad);
-	let bad_sig = zbls_usual_bytes_test(bad_sig0);
+	let bad_sig = bls_engine_bytes_test(bad_sig0);
         assert!( bad_sig == keypair.into_vartime().sign(bad) );
 
         assert!( bad_sig.verify() );
@@ -734,4 +739,16 @@ mod tests {
         assert!(!keypair.public.verify(Message::new(b"other",b"test message"), &good_sig.signature),
                 "Verification of a signature on a different message passed!");
     }
+
+    #[test]
+    fn single_messages_zbls() {
+        test_single_bls_message::<Bls12_381>();
+    }
+
+    #[test]
+    fn single_messages_bls377() {
+        test_single_bls_message::<Bls12_377>();
+    }
+  
+
 }
