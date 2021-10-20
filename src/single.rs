@@ -367,32 +367,29 @@ macro_rules!  serialization {
     }
 }
 
+pub trait BLSWrapper:
+      CanonicalSerialize +
+    CanonicalDeserialize
 
-// pub trait BLSWrapper:
-//      CanonicalSerialize +
-//      CanonicalDeserialize
+{
+   fn to_bytes(&self) -> Vec<u8> {
+          // let affine_representation = self.0.into_affine();
+          // let mut serialized_representation = vec![0; affine_representation.uncompressed_size()];
+          // affine_representation.serialize_uncompressed(&mut serialized_representation[..]).unwrap();
 
-// {
-//       fn to_bytes(&self) -> &[u8];
-//       fn from_bytes(bytes: &[u8]) -> Result<Self,SerializationError>;
-// }
+          // return serialized_representation[..];
+          let mut bytes = Vec::with_capacity(200);
+          self.serialize(&mut bytes[..]).unwrap();
+          bytes
 
-// impl BLSWrapper {
-//      pub fn to_bytes(&self) -> &[u8] {
-//          let affine_representation = self.0.into_affine();
-//          let mut serialized_representation = vec![0; affine_representation.uncompressed_size()];
-//          affine_representation.serialize_uncompressed(&mut serialized_representation[..]).unwrap();
+      }
 
-//          return serialized_representation[..];
+    fn from_bytes(&self, bytes: &[u8]) -> Result<Self,SerializationError> {
+        Self::deserialize(bytes)
+    }
+}
 
-//      }
-
-//      pub fn from_bytes(&self, bytes: &[u8]) -> Result<Self,SerializationError> {
-//          let borrowed_bytes_as_slice : &[u8] = &bytes;
-//          Self::deserialize(borrowed_bytes_as_slice)
-//      }
-
-// }
+impl BLSWrapper for Signature<UsualBLS<Bls12_381>>{}
 
 //TODO: when const generic becomes stable we get the size from the trait and merge this
 //with serialze macro.
