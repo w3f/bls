@@ -18,12 +18,19 @@ sha3 = "0.8"
 sha2 = "0.9.2"
 digest = "0.9.0"
 
-ark-ff = { version = "0.3", default-features = false }
-ark-ec = { version = "0.3", default-features = false }
-ark-serialize = { version = "0.3", default-features = false, features = [ "derive" ] }
-ark-serialize-derive = { version = "0.3", default-features = false }
-ark-bls12-381 = { version = "0.3", default-features = false, features = [ "curve" ] }
-ark-bls12-377 = { version = "0.3", default-features = false, features = [ "curve" ] }
+# ark-ff = { version = "0.3", default-features = false }
+# ark-ec = { version = "0.3", default-features = false }
+# ark-serialize = { version = "0.3", default-features = false, features = [ "derive" ] }
+# ark-serialize-derive = { version = "0.3", default-features = false }
+# ark-bls12-381 = { version = "0.3", default-features = false, features = [ "curve" ] }
+# ark-bls12-377 = { version = "0.3", default-features = false, features = [ "curve" ] }
+
+ark-ff = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb', default-features = false }
+ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb', default-features = true }
+ark-serialize = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb', default-features = false, features = [ "derive" ] }
+ark-serialize-derive = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb', default-features = false }
+#ark-bls12-381 = { git = "https://github.com/w3f/arkworks-curves", branch = 'skalman-bls12-377-wb-hash2curve', default-features = false, features = [ "curve" ] }
+ark-bls12-377 = { git = "https://github.com/w3f/arkworks-curves", branch = 'skalman-bls12-377-wb-hash2curve', default-features = false, features = [ "curve" ] }
 
 zeroize = { version = "1.0", default-features = false, features = [ "zeroize_derive" ] }
 serde = { version = "1.0", default-features = false, optional = true }
