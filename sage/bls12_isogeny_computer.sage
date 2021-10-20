@@ -92,7 +92,11 @@ def bls12_377_isos():
     Ell_prime = iso_G1.domain()
     # where this is E’
     assert iso_G1(Ell_prime.random_point()).curve() == Ell
-    iso_G2 = find_iso(Ell2_6)
+    # just making sure if there is any isogeny that is defined over F2 up to degree 30
+    print("searching for isogeny of Ell2 on F2 up to degree 30")
+    iso_G2 = find_iso(Ell2)
+    print("searching for isogeny of Ell2 on F6 up to degree 30")
+    iso_G2_F6 = find_iso(Ell2_6)
     # an isogeny from E2’ to E2,
     Ell2_prime = iso_G2.domain()
     # where this is E2’
@@ -202,7 +206,17 @@ def find_non_square():
 
     return xsi
 
+def find_non_square_low_abs(base_field):
+    for i in base_field:
+        if not i.is_square():
+           print(i, "is a nonsquare")
+           return i
+        elif not (-i).is_square():
+           print(-i, "is a nonsquare")
+           return -i
+    
 #xsi = find_non_square()
+p = 0x01ae3a4617c510eac63b05c06ca1493b1a22d9f300f5138f1ef3622fba094800170b5d44300000008508c00000000001
 quad_non_res = 0x01ae3a4617c510eac63b05c06ca1493b1a22d9f300f5138f1ef3622fba094800170b5d44300000008508bffffffffffc
 F.<X> = GF(p)[]
 F6.<X6> = GF(p^6, modulus=X^6 - quad_non_res)
