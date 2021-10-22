@@ -19,12 +19,11 @@
 use std::borrow::{Borrow};
 use std::ops::{MulAssign};
     
-//use ff::{Field, PrimeField, ScalarEngine, SqrtField}; // PrimeFieldDecodingError, PrimeFieldRepr
 use ark_ff::{Field, PrimeField, SquareRootField};
-use ark_ec::AffineCurve;
-use ark_ec::ProjectiveCurve;
-use ark_ec::{PairingEngine};
-use ark_ff::UniformRand;
+use ark_ec::{AffineCurve, ProjectiveCurve, PairingEngine};
+use ark_ec::hashing::map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField};
+use ark_ec::hashing::field_hashers::DefaultFieldHasher;
+use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
 use ark_ff::{One};
 use rand::{Rng};
 use rand_core::RngCore;
@@ -32,7 +31,7 @@ use rand_core::RngCore;
 use ark_ff::bytes::{ToBytes};
 use std::fmt::Debug;
 
-use rand::SeedableRng; //just for test
+use blake2::VarBlake2b;
 
 /// A weakening of `pairing::Engine` to permit transposing the groups.
 ///
@@ -93,15 +92,20 @@ pub trait EngineBLS {
 
     type SignaturePrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::SignatureGroupAffine>;
 
+    type HashToSignatureField: HashToField<Self::SignatureGroupBaseField>;
+    type MapToSignatureCurve: MapToCurve<Self::SignatureGroupAffine>;
+
     /// Generate a random scalar for use as a secret key.
     fn generate<R: Rng + RngCore>(rng: &mut R) -> Self::Scalar {
         Self::Scalar::rand(rng)
     }
 
+    /// getter function for the hash to curve map
+    fn hash_to_curve_map(&self) -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve>;
+    
     /// Hash one message to the signature curve.
-    fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-	let mut myrng = rand::rngs::StdRng::from_seed(*array_ref![message.borrow(),0,32]);
-        <Self::SignatureGroup as UniformRand>::rand(&mut myrng)
+    fn hash_to_signature_curve<M: Borrow<[u8]>>(&self, message: M) -> Self::SignatureGroup {
+        self.hash_to_curve_map().hash(message);
     }
 
     /// Run the Miller loop from `Engine` but orients its arguments
@@ -176,7 +180,7 @@ pub trait EngineBLS {
     /// by calling either prepare_g1 or prepare_g2 based on which group
     /// is used by the signature system to host the public key
     fn prepare_signature(g: impl Into<Self::SignatureGroupAffine>) -> Self::SignaturePrepared {
-	let g_affine: Self::SignatureGroupAffine = g.into();
+	    let g_affine: Self::SignatureGroupAffine = g.into();
         Self::SignaturePrepared::from(g_affine)
     }
 
@@ -207,12 +211,13 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
     type PublicKeyPrepared = E::G1Prepared;
     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fq;
 
-
     type SignatureGroup = E::G2Projective;
     type SignatureGroupAffine = E::G2Affine;
     type SignaturePrepared = E::G2Prepared;
     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
 
+    type HashToSignatureField =  DefaultFieldHasher<VarBlake2b>;    
+    type MapToSignatureCurve = WBMap<E>;
     
     fn miller_loop<'a,I>(i: I) -> E::Fqk
     where

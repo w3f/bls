@@ -668,7 +668,7 @@ impl<E: EngineBLS> SignedMessage<E> {
 #[cfg(test)]
 mod tests {
     use ark_ec::PairingEngine;
-    use ark_bls12_381::Bls12_381;
+    //use ark_bls12_381::Bls12_381;
     use ark_bls12_377::Bls12_377;
 
     use super::*;
@@ -740,9 +740,9 @@ mod tests {
     }
 
     #[test]
-    fn single_messages_zbls() {
-        test_single_bls_message::<Bls12_381>();
-    }
+    // fn single_messages_zbls() {
+    //     test_single_bls_message::<Bls12_381>();
+    // }
 
     #[test]
     fn single_messages_bls377() {

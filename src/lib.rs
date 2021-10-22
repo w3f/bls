@@ -135,7 +135,7 @@ impl Message {
         use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
         let mut h = Shake128::default();
         h.input(context);
-        let l = message.len() as u64;
+        let l = message.len() 5as u64;
         h.input(l.to_le_bytes());
         h.input(message);
         // let mut t = ::merlin::Transcript::new(context);
