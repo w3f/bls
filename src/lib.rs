@@ -97,6 +97,7 @@ extern crate rand_core;
 extern crate rand_chacha;
 extern crate sha3;
 extern crate digest;
+extern crate fdh;
 
 #[cfg(feature = "serde")]
 extern crate serde;
@@ -135,7 +136,7 @@ impl Message {
         use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
         let mut h = Shake128::default();
         h.input(context);
-        let l = message.len() 5as u64;
+        let l = message.len() as u64;
         h.input(l.to_le_bytes());
         h.input(message);
         // let mut t = ::merlin::Transcript::new(context);

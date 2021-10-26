@@ -18,10 +18,10 @@
 
 use std::borrow::{Borrow};
 use std::ops::{MulAssign};
-    
-use ark_ff::{Field, PrimeField, SquareRootField};
+
+use ark_ff::{Field, PrimeField, SquareRootField, UniformRand};
 use ark_ec::{AffineCurve, ProjectiveCurve, PairingEngine};
-use ark_ec::hashing::map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField};
+use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField}};
 use ark_ec::hashing::field_hashers::DefaultFieldHasher;
 use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
 use ark_ff::{One};
@@ -31,7 +31,18 @@ use rand_core::RngCore;
 use ark_ff::bytes::{ToBytes};
 use std::fmt::Debug;
 
-use blake2::VarBlake2b;
+use sha2::Sha256; //IETF standard asks for SHA256
+use fdh::{FullDomainHash, Update, VariableOutput};
+
+use ark_ec::bls12::Bls12Parameters;
+use core::marker::PhantomData;
+
+// Expand SHA256 from 256 bits to 1024 bits.
+// let output_bits = 1024;
+// let output_bytes = 1024 / 8;
+// let mut hasher = FullDomainHash::<Sha256>::new(output_bytes).unwrap();
+// hasher.update(b"ATTACK AT DAWN");
+// let result = hasher.finalize_boxed().into_vec();
 
 /// A weakening of `pairing::Engine` to permit transposing the groups.
 ///
@@ -101,11 +112,11 @@ pub trait EngineBLS {
     }
 
     /// getter function for the hash to curve map
-    fn hash_to_curve_map(&self) -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve>;
+    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve>;
     
     /// Hash one message to the signature curve.
-    fn hash_to_signature_curve<M: Borrow<[u8]>>(&self, message: M) -> Self::SignatureGroup {
-        self.hash_to_curve_map().hash(message);
+    fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
+        Self::hash_to_curve_map().hash(message.borrow()).unwrap().into_projective()
     }
 
     /// Run the Miller loop from `Engine` but orients its arguments
@@ -188,7 +199,7 @@ pub trait EngineBLS {
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 //pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381>;
-pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377>;
+pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 // pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});
@@ -200,9 +211,10 @@ pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377>;
 /// scalar multiplications with delinearization. 
 /// We also orient this variant to match zcash's traits.
 #[derive(Default)]
-pub struct UsualBLS<E: PairingEngine>(pub E);
+pub struct UsualBLS<E: PairingEngine, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>);
 
-impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
+impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine>
+{
     type Engine = E;
     type Scalar = <Self::Engine as PairingEngine>::Fr;
 
@@ -216,8 +228,8 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
     type SignaturePrepared = E::G2Prepared;
     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
 
-    type HashToSignatureField =  DefaultFieldHasher<VarBlake2b>;    
-    type MapToSignatureCurve = WBMap<E>;
+    type HashToSignatureField =  DefaultFieldHasher<FullDomainHash::<Sha256>>;    
+    type MapToSignatureCurve = WBMap<P::G2Parameters>;
     
     fn miller_loop<'a,I>(i: I) -> E::Fqk
     where
@@ -246,63 +258,68 @@ impl<E: PairingEngine> EngineBLS for UsualBLS<E> {
         let g1_minus_generator = <Self::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
         (-g1_minus_generator).into()
     }
+
+    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve> {
+	MapToCurveBasedHasher::<E::G2Affine, DefaultFieldHasher<FullDomainHash::<Sha256>>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
+    }
+    
 }
 
 
-/// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
-///
-/// We recommend gainst this variant by default because verifiers
-/// always perform `O(signers)` additions on the `PublicKeyGroup`,
-/// or worse 128 bit scalar multiplications with delinearization. 
-/// Yet, there are specific use cases where this variant performs
-/// better.  We swapy two group roles relative to zcash here.
-#[derive(Default)]
-pub struct TinyBLS<E: PairingEngine>(pub E);
+// /// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
+// ///
+// /// We recommend gainst this variant by default because verifiers
+// /// always perform `O(signers)` additions on the `PublicKeyGroup`,
+// /// or worse 128 bit scalar multiplications with delinearization. 
+// /// Yet, there are specific use cases where this variant performs
+// /// better.  We swapy two group roles relative to zcash here.
+// #[derive(Default)]
+// pub struct TinyBLS<E: PairingEngine>(pub E);
 
-impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
-    type Engine = E;
-    type Scalar = <Self::Engine as PairingEngine>::Fr;
+// impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
+//     type Engine = E;
+//     type Scalar = <Self::Engine as PairingEngine>::Fr;
 
-    type SignatureGroup = E::G1Projective;
-    type SignatureGroupAffine = E::G1Affine;
-    type SignaturePrepared = E::G1Prepared;
-    type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fq;
+//     type SignatureGroup = E::G1Projective;
+//     type SignatureGroupAffine = E::G1Affine;
+//     type SignaturePrepared = E::G1Prepared;
+//     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fq;
 
-    type PublicKeyGroup = E::G2Projective;
-    type PublicKeyGroupAffine = E::G2Affine;
-    type PublicKeyPrepared = E::G2Prepared;
-    type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+//     type PublicKeyGroup = E::G2Projective;
+//     type PublicKeyGroupAffine = E::G2Affine;
+//     type PublicKeyPrepared = E::G2Prepared;
+//     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
 
-    fn miller_loop<'a,I>(i: I) -> E::Fqk
-    where
-        I: IntoIterator<Item = &'a(
-            Self::PublicKeyPrepared,
-            Self::SignaturePrepared,
-        )>,
-    {
-        // We require an ugly unecessary allocation here because
-        // zcash's pairing library cnsumes an iterator of references
-        // to tuples of references, which always requires 
-        let i = i.into_iter().map(|(x,y)| (y.clone(),x.clone()))
-              .collect::<Vec<(Self::SignaturePrepared, Self::PublicKeyPrepared)>>();
-        E::miller_loop(&i)
-    }
+//     fn miller_loop<'a,I>(i: I) -> E::Fqk
+//     where
+//         I: IntoIterator<Item = &'a(
+//             Self::PublicKeyPrepared,
+//             Self::SignaturePrepared,
+//         )>,
+//     {
+//         // We require an ugly unecessary allocation here because
+//         // zcash's pairing library cnsumes an iterator of references
+//         // to tuples of references, which always requires 
+//         let i = i.into_iter().map(|(x,y)| (y.clone(),x.clone()))
+//               .collect::<Vec<(Self::SignaturePrepared, Self::PublicKeyPrepared)>>();
+//         E::miller_loop(&i)
+//     }
 
-    fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
-    where
-        G1: Into<E::G1Affine>,
-        G2: Into<E::G2Affine>,
-    {
-        E::pairing(q,p)
-    }
+//     fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
+//     where
+//         G1: Into<E::G1Affine>,
+//         G2: Into<E::G2Affine>,
+//     {
+//         E::pairing(q,p)
+//     }
 
-    /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared()
-     -> Self::PublicKeyPrepared
-    {
-        let g2_minus_generator = <Self::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
-        (-g2_minus_generator).into()
-    }
+//     /// Prepared negative of the generator of the public key curve.
+//     fn public_key_minus_generator_prepared()
+//      -> Self::PublicKeyPrepared
+//     {
+//         let g2_minus_generator = <Self::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
+//         (-g2_minus_generator).into()
+//     }
 
-}
+// }
 
