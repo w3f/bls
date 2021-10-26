@@ -668,16 +668,19 @@ impl<E: EngineBLS> SignedMessage<E> {
 #[cfg(test)]
 mod tests {
     use ark_ec::PairingEngine;
-    //use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::Bls12_381;
     use ark_bls12_377::Bls12_377;
-
+    use ark_ec::bls12::Bls12Parameters;
+    use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
+    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField}};
+    
     use super::*;
 
-    fn bls_engine_bytes_test<E: PairingEngine>(x: SignedMessage<UsualBLS<E>>) -> SignedMessage<UsualBLS<E>> {
+    fn bls_engine_bytes_test<E: PairingEngine, P: Bls12Parameters>(x: SignedMessage<UsualBLS<E,P>>) -> SignedMessage<UsualBLS<E, P>> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
         let SignedMessage { message, publickey, signature } = x;
 
-        let publickey = PublicKey::<UsualBLS<E>>::from_bytes(&publickey.to_bytes()).unwrap();
-        let signature = Signature::<UsualBLS<E>>::from_bytes(&signature.to_bytes()).unwrap();
+        let publickey = PublicKey::<UsualBLS<E,P>>::from_bytes(&publickey.to_bytes()).unwrap();
+        let signature = Signature::<UsualBLS<E,P>>::from_bytes(&signature.to_bytes()).unwrap();
         
         SignedMessage { message, publickey, signature }
         
@@ -698,11 +701,11 @@ mod tests {
     // bls_engine_bytes_tester!(UsualBLS, Bls12_381, 48);
     // bls_engine_bytes_tester!(UsualBLS, Bls12_377, 48);
     
-    fn test_single_bls_message<E: PairingEngine>() {
+    fn test_single_bls_message<E: PairingEngine, P: Bls12Parameters>() where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
 
         let good = Message::new(b"ctx",b"test message");
 
-        let mut keypair  = Keypair::<UsualBLS<E>>::generate(thread_rng());
+        let mut keypair  = Keypair::<UsualBLS<E,P>>::generate(thread_rng());
         let good_sig0 = keypair.sign(good);
         let good_sig = bls_engine_bytes_test(good_sig0);
         assert!(good_sig.verify_slow());
@@ -746,7 +749,7 @@ mod tests {
 
     #[test]
     fn single_messages_bls377() {
-        test_single_bls_message::<Bls12_377>();
+        test_single_bls_message::<Bls12_377,ark_bls12_377::Parameters>();
     }
   
 
