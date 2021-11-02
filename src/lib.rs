@@ -106,18 +106,17 @@ use std::borrow::Borrow;
 
 pub mod engine;
 pub mod single;
-// pub mod distinct;
-// pub mod pop;
-// pub mod bit;
-// pub mod delinear;
-// pub mod verifiers;
-// pub mod delinear;
-// pub mod bls_pop;
+pub mod distinct;
+pub mod pop;
+pub mod bit;
+pub mod delinear;
+pub mod verifiers;
+pub mod bls_pop;
 
 pub use engine::*;
 
 pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
-// pub use bit::{BitSignedMessage,CountSignedMessage};
+pub use bit::{BitSignedMessage,CountSignedMessage};
 
 
 /// Internal message hash size.  

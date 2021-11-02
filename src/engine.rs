@@ -198,7 +198,7 @@ pub trait EngineBLS {
 }
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381, ark_bls12_377::Parameters>;
+pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Parameters> ;
 pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
@@ -211,7 +211,7 @@ pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
 /// scalar multiplications with delinearization. 
 /// We also orient this variant to match zcash's traits.
 #[derive(Default)]
-pub struct UsualBLS<E: PairingEngine, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>);
+pub struct UsualBLS<E: PairingEngine, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine>;
 
 impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine>
 {

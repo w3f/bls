@@ -672,7 +672,7 @@ mod tests {
     use ark_bls12_377::Bls12_377;
     use ark_ec::bls12::Bls12Parameters;
     use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField}};
+    use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
     
     use super::*;
 
@@ -717,7 +717,7 @@ mod tests {
 
         let bad = Message::new(b"ctx",b"wrong message");
         let bad_sig0 = keypair.sign(bad);
-	let bad_sig = bls_engine_bytes_test(bad_sig0);
+	    let bad_sig = bls_engine_bytes_test(bad_sig0);
         assert!( bad_sig == keypair.into_vartime().sign(bad) );
 
         assert!( bad_sig.verify() );
@@ -726,13 +726,12 @@ mod tests {
         let another_sig = keypair.sign(another);
         assert!( another_sig == keypair.into_vartime().sign(another) );
         assert!( another_sig.verify() );
-
 	
         assert!(keypair.public.verify(good, &good_sig.signature),
                 "Verification of a valid signature failed!");
 	
-	assert!(good != bad, "good == bad");
-	assert!(good_sig.signature != bad_sig.signature, "good sig == bad sig");
+	    assert!(good != bad, "good == bad");
+	    assert!(good_sig.signature != bad_sig.signature, "good sig == bad sig");
 	
         assert!(!keypair.public.verify(good, &bad_sig.signature),
                 "Verification of a signature on a different message passed!");
@@ -743,14 +742,12 @@ mod tests {
     }
 
     #[test]
-    // fn single_messages_zbls() {
-    //     test_single_bls_message::<Bls12_381>();
-    // }
+    fn single_messages_zbls() {
+        test_single_bls_message::<Bls12_381, ark_bls12_381::Parameters>();
+    }
 
     #[test]
     fn single_messages_bls377() {
         test_single_bls_message::<Bls12_377,ark_bls12_377::Parameters>();
     }
-  
-
 }
