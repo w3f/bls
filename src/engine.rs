@@ -32,7 +32,7 @@ use ark_ff::bytes::{ToBytes};
 use std::fmt::Debug;
 
 use sha2::Sha256; //IETF standard asks for SHA256
-use fdh::{FullDomainHash, Update, VariableOutput};
+use fdh::{FullDomainHash};
 
 use ark_ec::bls12::Bls12Parameters;
 use core::marker::PhantomData;
