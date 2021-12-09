@@ -2,7 +2,9 @@
 
 Boneh-Lynn-Shacham (BLS) signatures have slow signing, very slow verification, require slow and much less secure pairing friendly curves, and tend towards dangerous malleability.  Yet, BLS permits a diverse array of signature aggregation options far beyond any other known signature scheme, which makes BLS a preferred scheme for voting in consensus algorithms and for threshold signatures. 
 
-In this crate, we take a largely unified approach to aggregation techniques and verifier optimisations for BLS signature:  We support the [BLS12-381](https://z.cash/blog/new-snark-curve.html) (Barreto-Lynn-Scott) curves via ZCash's traits, but abstract the pairing so that developers can choose their preferred orientation for BLS signatures.  We provide aggregation techniques based on messages being distinct, on proofs-of-possession, and on delinearization, although we do not provide all known optimisations for delinearization.  
+In this crate, we take a largely unified approach to aggregation techniques and verifier optimisations for BLS signature:  We support the [BLS12-381](https://z.cash/blog/new-snark-curve.html) and [BLS12-377](https://eprint.iacr.org/2018/962.pdf) (Barreto-Lynn-Scott) curves via Arkworks traits, but abstract the pairing so that developers can choose their preferred orientation for BLS signatures.  We provide aggregation techniques based on messages being distinct, on proofs-of-possession, and on delinearization, although we do not provide all known optimisations for delinearization.
+
+We provide implementation of generation and verification proof-of-possession based on Schnorr Signature which is faster than using BLS Signature itself for this task.
 
 We cannot claim these abstractions provide miss-use resistance, but they at least structure the problem, provide some guidlines, and maximize the relevance of warnings present in the documentation.
 
@@ -11,9 +13,9 @@ We cannot claim these abstractions provide miss-use resistance, but they at leas
 You first bring the `bls` crate into your project just as you normally would.
 
 ```rust
-use bls_like::{Keypair,ZBLS};
+use bls_like::{Keypair,ZBLS,Message,Signed};
 
-let keypair = Keypair::<ZBLS>::generate(::rand::thread_rng());
+let mut keypair = Keypair::<ZBLS>::generate(::rand::thread_rng());
 let message = Message::new(b"Some context",b"Some message");
 let sig = keypair.sign(message);
 assert!( sig.verify() );
