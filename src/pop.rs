@@ -169,6 +169,59 @@ impl<'a,E: EngineBLS> Signed for &'a BatchAssumingProofsOfPossession<E> {
     }
 }
 
+#[cfg(test)]
+mod tests {
 
+    use crate::Message;
+    use crate::Keypair;
+    use crate::UsualBLS;
+    use rand::thread_rng;
 
+    use ark_bls12_381::Bls12_381;
 
+    use super::*;
+    
+    #[test]
+    fn verify_aggregate_single_message_single_signer() {
+        let good = Message::new(b"ctx",b"test message");
+
+        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig0 = keypair.sign(good);
+        assert!(good_sig0.verify_slow());
+        
+    }
+
+    #[test]
+    fn verify_aggregate_single_message_multi_signers() {
+        let good = Message::new(b"ctx",b"test message");
+
+        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig0 = keypair0.secret.sign(good);
+
+        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig1 = keypair1.secret.sign(good);
+
+        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        aggregated_sigs.add_signature(good_sig0);
+        aggregated_sigs.add_signature(good_sig1);
+
+        aggregated_sigs.add_message_n_publickey(good, keypair0.public);
+        aggregated_sigs.add_message_n_publickey(good, keypair1.public);
+
+        assert!(aggregated_sigs.verify() == true, "good aggregated signature does not verify");
+
+    }
+
+    #[test]
+    fn verify_aggregate_multi_messages_single_signer() {
+    }
+
+    #[test]
+    fn verify_aggregate_multi_messages_multi_signers() {
+    }
+
+    #[test]
+    fn verify_aggregate_single_message_repetative_signers() {
+    }
+
+}

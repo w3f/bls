@@ -197,7 +197,7 @@ impl<E: EngineBLS> SecretKey<E> {
     // An initial call to this function after deserialization or
     // `into_split_dirty` incurs a miniscule risk from side channel
     // attacks, but then protects the highly vulnerable signing
-    // operations.  `into_split` itself hjandles this.
+    // operations.  `into_split` itself handles this.
     #[inline(never)]
     pub fn resplit<R: Rng>(&mut self, mut rng: R) {
         // resplit_with(|| Ok(self), rng).unwrap();
@@ -595,7 +595,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 
 impl<E: EngineBLS> SignedMessage<E> {
     #[cfg(test)]
-    fn verify_slow(&self) -> bool {
+    pub fn verify_slow(&self) -> bool {
         let g1_one = <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
