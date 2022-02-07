@@ -196,14 +196,14 @@ mod tests {
         let good = Message::new(b"ctx",b"test message");
 
         let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
-        let good_sig0 = keypair0.secret.sign(good);
+        let good_sig0 = keypair0.sign(good);
 
         let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
-        let good_sig1 = keypair1.secret.sign(good);
+        let good_sig1 = keypair1.sign(good);
 
         let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
-        aggregated_sigs.add_signature(good_sig0);
-        aggregated_sigs.add_signature(good_sig1);
+        aggregated_sigs.add_signature(&good_sig0);
+        aggregated_sigs.add_signature(&good_sig1);
 
         aggregated_sigs.add_message_n_publickey(good, keypair0.public);
         aggregated_sigs.add_message_n_publickey(good, keypair1.public);

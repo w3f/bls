@@ -536,6 +536,14 @@ impl<E: EngineBLS> Keypair<E> {
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
     pub fn sign_with_rng<R: Rng>(&mut self, message: Message, rng: R) -> SignedMessage<E> {
         let signature = self.secret.sign(message,rng);
+    }
+
+    /// Create a `SignedMessage` using the default `ThreadRng`.
+    pub fn sign(&mut self, message: Message) -> SignedMessage<E> {
+    }
+
+    pub fn signed_message() {
+	let signature = self.sign_with_rng(message,thread_rng());
         SignedMessage {
             message,
             publickey: self.public,
@@ -543,10 +551,6 @@ impl<E: EngineBLS> Keypair<E> {
         }
     }
 
-    /// Create a `SignedMessage` using the default `ThreadRng`.
-    pub fn sign(&mut self, message: Message) -> SignedMessage<E> {
-        self.sign_with_rng(message,thread_rng())
-    }
 }
 
 
