@@ -533,16 +533,20 @@ impl<E: EngineBLS> Keypair<E> {
         KeypairVT { secret, public }
     }
 
-    /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
-    pub fn sign_with_rng<R: Rng>(&mut self, message: Message, rng: R) -> SignedMessage<E> {
-        let signature = self.secret.sign(message,rng);
+    /// Sign a message creating a `Signature` using a user supplied CSPRNG for the key splitting.
+    pub fn sign_with_rng<R: Rng>(&mut self, message: Message, rng: R) -> Signature<E> {
+        self.secret.sign(message,rng)
     }
 
+    
+    /// Sign a message creating a `Signature` using the default `ThreadRng`.
+    pub fn sign(&mut self, message: Message) -> Signature<E> {
+        	self.sign_with_rng(message,thread_rng())
+    }
+
+    
     /// Create a `SignedMessage` using the default `ThreadRng`.
-    pub fn sign(&mut self, message: Message) -> SignedMessage<E> {
-    }
-
-    pub fn signed_message() {
+    pub fn signed_message(&mut self, message: Message) -> SignedMessage<E> {
 	let signature = self.sign_with_rng(message,thread_rng());
         SignedMessage {
             message,
@@ -710,24 +714,24 @@ mod tests {
         let good = Message::new(b"ctx",b"test message");
 
         let mut keypair  = Keypair::<UsualBLS<E,P>>::generate(thread_rng());
-        let good_sig0 = keypair.sign(good);
+        let good_sig0 = keypair.signed_message(good);
         let good_sig = bls_engine_bytes_test(good_sig0);
         assert!(good_sig.verify_slow());
 
         let keypair_vt = keypair.into_vartime();
         assert!( keypair_vt.secret.0 == keypair_vt.into_split(thread_rng()).into_vartime().secret.0 );
-        assert!( good_sig == keypair.sign(good) );
+        assert!( good_sig == keypair.signed_message(good) );
         assert!( good_sig == keypair_vt.sign(good) );
 
         let bad = Message::new(b"ctx",b"wrong message");
-        let bad_sig0 = keypair.sign(bad);
+        let bad_sig0 = keypair.signed_message(bad);
 	    let bad_sig = bls_engine_bytes_test(bad_sig0);
         assert!( bad_sig == keypair.into_vartime().sign(bad) );
 
         assert!( bad_sig.verify() );
 
         let another = Message::new(b"ctx",b"another message");
-        let another_sig = keypair.sign(another);
+        let another_sig = keypair.signed_message(another);
         assert!( another_sig == keypair.into_vartime().sign(another) );
         assert!( another_sig.verify() );
 	

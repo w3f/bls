@@ -538,7 +538,7 @@ mod tests {
         let pop = keypairs.iter().map(|k| k.public).collect::<Vec<_>>();
         let dup = keypairs[3].clone();
         keypairs.push(dup);
-        let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
+        let sigs1 = keypairs.iter_mut().map(|k| k.signed_message(msg1)).collect::<Vec<_>>();
 
         let mut bitsig1 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
         assert!( bitsig1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
@@ -558,7 +558,7 @@ mod tests {
         assert!( verifiers::verify_with_distinct_messages(&bitsig1,false) );
         // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
 
-        let sigs2 = keypairs.iter_mut().map(|k| k.sign(msg2)).collect::<Vec<_>>();  
+        let sigs2 = keypairs.iter_mut().map(|k| k.signed_message(msg2)).collect::<Vec<_>>();  
         let mut bitsig2 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
         for sig in sigs2.iter().take(3) {
             assert!( bitsig2.add(sig).is_ok() );
@@ -573,7 +573,7 @@ mod tests {
         assert!( verifiers::verify_simple(&multimsg) );
         assert!( verifiers::verify_with_distinct_messages(&multimsg,false) );
 
-        let oops = Keypair::<ZBLS>::generate(thread_rng()).sign(msg2);
+        let oops = Keypair::<ZBLS>::generate(thread_rng()).signed_message(msg2);
         assert!( bitsig1.add_points(oops.publickey,oops.signature).is_err() );
         /*
         TODO: Test that adding signers for an incorrect message fails, but this version angers teh borrow checker.

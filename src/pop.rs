@@ -187,7 +187,7 @@ mod tests {
 
         let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
         let good_sig0 = keypair.sign(good);
-        assert!(good_sig0.verify_slow());
+        assert!(good_sig0.verify(good, &keypair.public));
         
     }
 
@@ -205,8 +205,8 @@ mod tests {
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
-        aggregated_sigs.add_message_n_publickey(good, keypair0.public);
-        aggregated_sigs.add_message_n_publickey(good, keypair1.public);
+        aggregated_sigs.add_message_n_publickey(&good, &keypair0.public);
+        aggregated_sigs.add_message_n_publickey(&good, &keypair1.public);
 
         assert!(aggregated_sigs.verify() == true, "good aggregated signature does not verify");
 

@@ -210,7 +210,7 @@ mod tests {
         let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
         let dup = keypairs[3].clone();
         keypairs.push(dup);
-        let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
+        let sigs1 = keypairs.iter_mut().map(|k| k.signed_message(msg1)).collect::<Vec<_>>();
 
         let mut dl = Delinearized::<ZBLS>::new_batched();
         for sig in sigs1.iter() {
