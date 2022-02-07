@@ -271,4 +271,24 @@ mod tests {
         assert!(aggregated_sigs.verify() == true, "good aggregate of a repetitive signature does not verify");
     }
 
+    #[test]
+    fn aggregate_of_signature_of_a_wrong_message_should_not_verify() {
+        let good0 = Message::new(b"ctx",b"Space over Tab");
+        let bad1 = Message::new(b"ctx",b"Tab over Space");
+
+        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig0 = keypair0.sign(good0);
+
+        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let bad_sig1 = keypair1.sign(bad1);
+
+        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        aggregated_sigs.add_signature(&good_sig0);
+        aggregated_sigs.add_signature(&bad_sig1);
+
+        aggregated_sigs.add_message_n_publickey(&good0, &keypair0.public);
+        aggregated_sigs.add_message_n_publickey(&good0, &keypair1.public);
+
+        assert!(aggregated_sigs.verify() == false, "aggregated signature of a wrong message should not verify");
+    }
 }
