@@ -208,20 +208,67 @@ mod tests {
         aggregated_sigs.add_message_n_publickey(&good, &keypair0.public);
         aggregated_sigs.add_message_n_publickey(&good, &keypair1.public);
 
-        assert!(aggregated_sigs.verify() == true, "good aggregated signature does not verify");
+        assert!(aggregated_sigs.verify() == true, "good aggregated signature of a single message with multiple key does not verify");
 
     }
 
     #[test]
     fn verify_aggregate_multi_messages_single_signer() {
+        let good0 = Message::new(b"ctx",b"Tab over Space");
+        let good1 = Message::new(b"ctx",b"Space over Tab");
+
+        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+
+        let good_sig0 = keypair.sign(good0);
+        let good_sig1 = keypair.sign(good1);
+
+        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        aggregated_sigs.add_signature(&good_sig0);
+        aggregated_sigs.add_signature(&good_sig1);
+
+        aggregated_sigs.add_message_n_publickey(&good0, &keypair.public);
+        aggregated_sigs.add_message_n_publickey(&good1, &keypair.public);
+
+        assert!(aggregated_sigs.verify() == true, "good aggregated signature of multiple messages with a single key does not verify");
+        
     }
 
     #[test]
     fn verify_aggregate_multi_messages_multi_signers() {
+        let good0 = Message::new(b"ctx",b"in the beginning");
+        let good1 = Message::new(b"ctx",b"there was a flying spaghetti monster");
+
+        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig0 = keypair0.sign(good0);
+
+        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig1 = keypair1.sign(good1);
+
+        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        aggregated_sigs.add_signature(&good_sig0);
+        aggregated_sigs.add_signature(&good_sig1);
+
+        aggregated_sigs.add_message_n_publickey(&good0, &keypair0.public);
+        aggregated_sigs.add_message_n_publickey(&good1, &keypair1.public);
+
+        assert!(aggregated_sigs.verify() == true, "good aggregated signature of multiple messages with multiple keys does not verify");
     }
 
     #[test]
     fn verify_aggregate_single_message_repetative_signers() {
+        let good = Message::new(b"ctx",b"test message");
+
+        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let good_sig = keypair.sign(good);
+
+        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        aggregated_sigs.add_signature(&good_sig);
+        aggregated_sigs.add_signature(&good_sig);
+
+        aggregated_sigs.add_message_n_publickey(&good, &keypair.public);
+        aggregated_sigs.add_message_n_publickey(&good, &keypair.public);
+
+        assert!(aggregated_sigs.verify() == true, "good aggregate of a repetitive signature does not verify");
     }
 
 }
