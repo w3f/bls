@@ -54,6 +54,8 @@ We recommend distinct message aggregation like this primarily for verifying proo
 
 Assuming you already have proofs-of-possession, then you'll want to do aggregation with `BitPoPSignedMessage` or some variant tuned to your use case.  We recommend more care when using `BatchAssumingProofsOfPossession` because it provides no mechanism for checking a proof-of-possession table.
 
+The library offers method for generating and verifying proof of positions based on [Schnorr Signature](https://en.wikipedia.org/wiki/Schnorr_signature) which is significantly faster to verify than when using BLS signature itself as proof of position. The following example demonstrate how to generate and verify proof of positions and then using `BatchAssumingProofsOfPossession` to batch and verify multiple BLS signatures.
+
 ```rust
 use bls_like::{Keypair,ZBLS,Message,Signed, pop::BatchAssumingProofsOfPossession, pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier}};
 use sha2::Sha512;
@@ -76,6 +78,11 @@ assert!(batch_poped.verify())
 ```
 
 If you lack proofs-of-possesion, then delinearized approaches are provided in the `delinear` module, but such schemes might require a more customised approach.
+
+### Hash to Curve
+
+In order to sign a message, the library needs to hash the message as a point on the signature curve. While `BLSEngine` trait is agnostic about `MapToSignatureCurve` method, our implementation of BLS12-381 (`ZBLS`) and BLS12-377(`BLS377`) specifically uses Wahby
+and Boneh hash to curve method described in Section of 6.6.3 of https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/ .
 
 ## Security Warnings
 
