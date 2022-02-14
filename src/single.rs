@@ -293,22 +293,6 @@ impl <E: EngineBLS> Eq for $wrapper<E> {}
     }
 }  // macro_rules!
 
-#[cfg(feature = "serde")]
-fn serde_error_from_group_decoding_error<ERR: ::serde::de::Error>(err: GroupDecodingError) -> ERR {
-    match err {
-        GroupDecodingError::NotOnCurve
-            => ERR::custom("Point not on curve"),
-        GroupDecodingError::NotInSubgroup
-            => ERR::custom("Point not in prime order subgroup"),
-        GroupDecodingError::CoordinateDecodingError(_s, _pfde)  // Ignore PrimeFieldDecodingError
-            => ERR::custom("Coordinate decoding error"),
-        GroupDecodingError::UnexpectedCompressionMode
-            => ERR::custom("Unexpected compression mode"),
-        GroupDecodingError::UnexpectedInformation
-            => ERR::custom("Invalid length or other unexpected information"),
-    }
-}
-
 macro_rules!  serialization {
     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
