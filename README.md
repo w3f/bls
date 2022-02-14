@@ -35,7 +35,7 @@ let msgs = ["The ships", "hung in the sky", "in much the same way", "that bricks
 let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.signed_message(*m)).collect::<Vec<_>>();
 
 let mut dms = sigs.iter().try_fold(
-    DistinctMessages::<ZBLS>::new(), 
+    DistinctMessages::<ZBLS>::new(),
     |dm,sig| dm.add(sig)
 ).unwrap();
 let signature = <&DistinctMessages::<ZBLS> as Signed>::signature(&&dms);
@@ -55,6 +55,24 @@ We recommend distinct message aggregation like this primarily for verifying proo
 Assuming you already have proofs-of-possession, then you'll want to do aggregation with `BitPoPSignedMessage` or some variant tuned to your use case.  We recommend more care when using `BatchAssumingProofsOfPossession` because it provides no mechanism for checking a proof-of-possession table.
 
 ```rust
+use bls_like::{Keypair,ZBLS,Message,Signed, pop::BatchAssumingProofsOfPossession, pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier}};
+use sha2::Sha512;
+
+let mut keypairs = [Keypair::<ZBLS>::generate(::rand::thread_rng()), Keypair::<ZBLS>::generate(::rand::thread_rng())];
+let msgs = ["The ships", "hung in the sky", "in much the same way", "that bricks don’t."].iter().map(|m| Message::new(b"Some context", m.as_bytes())).collect::<Vec<_>>();
+let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();
+
+let challenge_message = Message::new(b"ctx",b"sign this message, if you really have the secret key");
+let publickeys_with_pop = keypairs.iter().map(|k|(k.public,<dyn ProofOfPossessionGenerator<ZBLS, Sha512>>::generate_pok(&k.secret, challenge_message))).collect::<Vec<_>>();
+
+//first make sure public keys have valid pop
+let publickeys = publickeys_with_pop.iter().map(|(publickey, pop) | {assert!(<dyn ProofOfPossessionVerifier<ZBLS, Sha512>>::verify_pok(publickey, challenge_message, *pop)); publickey}).collect::<Vec<_>>();
+
+let mut batch_poped = msgs.iter().zip(publickeys).zip(sigs).fold(
+    BatchAssumingProofsOfPossession::<ZBLS>::new(),
+    |mut bpop,((message, publickey),sig)| { bpop.add_message_n_publickey(message, &publickey); bpop.add_signature(&sig); bpop }
+);
+assert!(batch_poped.verify())
 ```
 
 If you lack proofs-of-possesion, then delinearized approaches are provided in the `delinear` module, but such schemes might require a more customised approach.
@@ -79,4 +97,3 @@ submitted for inclusion in the work by you, as defined in the Apache-2.0
 license, shall be dual licensed as above, without any additional terms or
 conditions.
 
-(rustic-cargo-test-run "--doc")
