@@ -2,7 +2,7 @@
 
 Boneh-Lynn-Shacham (BLS) signatures have slow signing, very slow verification, require slow and much less secure pairing friendly curves, and tend towards dangerous malleability.  Yet, BLS permits a diverse array of signature aggregation options far beyond any other known signature scheme, which makes BLS a preferred scheme for voting in consensus algorithms and for threshold signatures. 
 
-In this crate, we take a largely unified approach to aggregation techniques and verifier optimisations for BLS signature:  We support the [BLS12-381](https://z.cash/blog/new-snark-curve.html) and [BLS12-377](https://eprint.iacr.org/2018/962.pdf) (Barreto-Lynn-Scott) curves via Arkworks traits, but abstract the pairing so that developers can choose their preferred orientation for BLS signatures.  We provide aggregation techniques based on messages being distinct, on proofs-of-possession, and on delinearization, although we do not provide all known optimisations for delinearization.
+In this crate, we take a largely unified approach to aggregation techniques and verifier optimisations for BLS signature:  We support the [BLS12-381](https://z.cash/blog/new-snark-curve.html) and [BLS12-377](https://eprint.iacr.org/2018/962.pdf) (Barreto-Lynn-Scott) curves via Arkworks traits, but abstract the pairing so that developers can choose their preferred orientation for BLS signatures. We provide aggregation techniques based on messages being distinct, on proofs-of-possession, and on delinearization, although we do not provide all known optimisations for delinearization.
 
 We provide implementation of generation and verification proof-of-possession based on Schnorr Signature which is faster than using BLS Signature itself for this task.
 
@@ -18,44 +18,43 @@ use bls_like::{Keypair,ZBLS,Message,Signed};
 let mut keypair = Keypair::<ZBLS>::generate(::rand::thread_rng());
 let message = Message::new(b"Some context",b"Some message");
 let sig = keypair.sign(message);
-assert!( sig.verify() );
+assert!( sig.verify(message,&keypair.public) );
 ```
 
-In this example, `sig` is a `SignedMessage<ZBLS>` that contains the message hash, the signer's public key, and of course the signature, but one should usually detach these constituents for wire formats.
+In this example, `sig` is a `Signature<ZBLS>` which only contains signature. One can use `Keypair::signed_message` method which returns a `SignedMessage` struct that contains the message hash, the signer's public key, and of course the signature, but one should usually detach these constituents for wire formats.
 
 Aggregated and blind signatures are almost the only reasons anyone would consider using BLS signatures, so we focus on aggregation here.  We assume for brevity that `sigs` is an array of `SignedMessage`s, as one might construct like 
-
-```rust
-let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();  
-```
 
 As a rule, aggregation that requires distinct messages still requires one miller loop step per message, so aggregate signatures have rather slow verification times.  You can nevertheless achieve quite small signature sizes like
 
 ```rust
+use bls_like::{Keypair,ZBLS,Message,Signed, distinct::DistinctMessages};
+  
+let mut keypairs = [Keypair::<ZBLS>::generate(::rand::thread_rng()), Keypair::<ZBLS>::generate(::rand::thread_rng())];
+let msgs = ["The ships", "hung in the sky", "in much the same way", "that bricks don’t."].iter().map(|m| Message::new(b"Some context", m.as_bytes())).collect::<Vec<_>>();
+let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.signed_message(*m)).collect::<Vec<_>>();
+
 let mut dms = sigs.iter().try_fold(
-    ::bls::distinct::DistinctMessages::<ZBLS>::new(), 
+    DistinctMessages::<ZBLS>::new(), 
     |dm,sig| dm.add(sig)
 ).unwrap();
-dms.signature()
-```
+let signature = <&DistinctMessages::<ZBLS> as Signed>::signature(&&dms);
 
-Anyone who receives the already aggregated signature along with a list of messages and public keys might reconstruct this like:
-
-```rust
+let publickeys = keypairs.iter().map(|k|k.public).collect::<Vec<_>>();
 let mut dms = msgs.iter().zip(publickeys).try_fold(
-    ::bls::distinct::DistinctMessages::<ZBLS>::new(), 
-    |dm,(message,publickey)| dm.add_message_n_publickey(message,publickey)
-) ?;
-dms.dms.add_signature(signature);
-dms.verify()
+    DistinctMessages::<ZBLS>::new(), 
+    |dm,(message,publickey)| dm.add_message_n_publickey(*message,publickey)
+).unwrap();
+dms.add_signature(&signature);
+assert!(dms.verify())
 ```
+Anyone who receives the already aggregated signature along with a list of messages and public keys might reconstruct the signature as shown in the above example.
 
-We recommend distinct message aggregation like this primarily for verifying proofs-of-possession, meaning checking the self certificates for numerous keys.  
+We recommend distinct message aggregation like this primarily for verifying proofs-of-possession, meaning checking the self certificates for numerous keys.
 
 Assuming you already have proofs-of-possession, then you'll want to do aggregation with `BitPoPSignedMessage` or some variant tuned to your use case.  We recommend more care when using `BatchAssumingProofsOfPossession` because it provides no mechanism for checking a proof-of-possession table.
 
 ```rust
-// TODO: Use BitPoPSignedMessage
 ```
 
 If you lack proofs-of-possesion, then delinearized approaches are provided in the `delinear` module, but such schemes might require a more customised approach.
@@ -80,3 +79,4 @@ submitted for inclusion in the work by you, as defined in the Apache-2.0
 license, shall be dual licensed as above, without any additional terms or
 conditions.
 
+(rustic-cargo-test-run "--doc")
