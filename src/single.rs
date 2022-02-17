@@ -372,7 +372,7 @@ macro_rules! to_and_from_bytes_dervie {
 }
 
  //     //TODO: when const generic becomes stable we get the size from the trait and return
- //     //constant size array
+ //     //constant size array 
  //     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
  //          let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
  //          self.serialize(&mut serialized_representation[..]).unwrap();
@@ -386,6 +386,7 @@ macro_rules! to_and_from_bytes_dervie {
  //     }
  // }
 
+// impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
 // impl <E: EngineBLS> SerializableToBytes<{ E::SIGNATURE_SERIALIZED_SIZE }> for Signature<E> {}
 // impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
 
