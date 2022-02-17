@@ -67,7 +67,6 @@ pub trait EngineBLS {
     /// becuase all verifiers perform additions on this curve, or
     /// even scalar multiplicaitons with delinearization.
     type PublicKeyGroupBaseField: Field;
-
     type PublicKeyGroupAffine:
     AffineCurve<ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField, Projective = Self::PublicKeyGroup>
         + From<Self::PublicKeyGroup>
@@ -82,6 +81,8 @@ pub trait EngineBLS {
 	+ MulAssign<Self::Scalar>;
     
     type PublicKeyPrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::PublicKeyGroupAffine>;
+
+    const PUBLICKEY_SERIALIZED_SIZE : usize;
 
     /// Group where BLS signatures live
     ///
@@ -103,6 +104,8 @@ pub trait EngineBLS {
 
     type SignaturePrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::SignatureGroupAffine>;
 
+    const SIGNATURE_SERIALIZED_SIZE : usize;
+    
     type HashToSignatureField: HashToField<Self::SignatureGroupBaseField>;
     type MapToSignatureCurve: MapToCurve<Self::SignatureGroupAffine>;
 
@@ -223,10 +226,14 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
     type PublicKeyPrepared = E::G1Prepared;
     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fq;
 
+    const PUBLICKEY_SERIALIZED_SIZE : usize = 48;
+
     type SignatureGroup = E::G2Projective;
     type SignatureGroupAffine = E::G2Affine;
     type SignaturePrepared = E::G2Prepared;
     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+
+    const SIGNATURE_SERIALIZED_SIZE : usize = 96;
 
     type HashToSignatureField =  DefaultFieldHasher<FullDomainHash::<Sha256>>;    
     type MapToSignatureCurve = WBMap<P::G2Parameters>;

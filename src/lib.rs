@@ -93,6 +93,7 @@ extern crate arrayref;
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
+extern crate ark_std;
 extern crate ark_ff;
 extern crate ark_ec;
 extern crate rand;
@@ -114,7 +115,7 @@ pub mod pop;
 pub mod bit;
 pub mod delinear;
 pub mod verifiers;
-pub mod bls_pop;
+pub mod schnorr_pop;
 
 pub use engine::*;
 

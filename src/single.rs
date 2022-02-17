@@ -23,8 +23,9 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ark_ff::{UniformRand};
-use ark_ff::{Zero};
+use ark_std::io::{Result as IoResult};
+
+use ark_ff::{UniformRand, Zero, bytes::{FromBytes, ToBytes} };
 
 use ark_ec::AffineCurve;
 use ark_ec::ProjectiveCurve;
@@ -293,95 +294,113 @@ impl <E: EngineBLS> Eq for $wrapper<E> {}
     }
 }  // macro_rules!
 
-macro_rules!  serialization {
-    ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
+// macro_rules!  serialization {
+//     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
 
-        impl<E> CanonicalSerialize for $wrapper<E> where E: $se {
-            #[inline]
-            fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-                self.0.into_affine().serialize(&mut writer)?;
-                Ok(())
-            }
-            #[inline]
-            fn serialized_size(&self) -> usize {
-                self.0.into_affine().serialized_size()
-            }    
-            #[inline]
-            fn serialize_uncompressed<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-                self.0.into_affine().serialize_uncompressed(&mut writer)?;
-                Ok(())
-            }
-            #[inline]
-            fn uncompressed_size(&self) -> usize {
-                self.0.into_affine().uncompressed_size()
-            }
+//         impl<E> CanonicalSerialize for $wrapper<E> where E: $se {
+//             #[inline]
+//             fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+//                 self.0.into_affine().serialize(&mut writer)?;
+//                 Ok(())
+//             }
+//             #[inline]
+//             fn serialized_size(&self) -> usize {
+//                 self.0.into_affine().serialized_size()
+//             }    
+//             #[inline]
+//             fn serialize_uncompressed<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+//                 self.0.into_affine().serialize_uncompressed(&mut writer)?;
+//                 Ok(())
+//             }
+//             #[inline]
+//             fn uncompressed_size(&self) -> usize {
+//                 self.0.into_affine().uncompressed_size()
+//             }
             
-            #[inline]
-            fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-                self.0.into_affine().uncompressed_size().serialize_unchecked(&mut writer)?;
-                Ok(())
-            }           
+//             #[inline]
+//             fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+//                 self.0.into_affine().uncompressed_size().serialize_unchecked(&mut writer)?;
+//                 Ok(())
+//             }           
             
-        }
+//         }
                 
-        impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
-            #[inline]
-            fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-                let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize(&mut reader)?;
-                Ok($wrapper(affine_point.into_projective()))
-            }
+//         impl<E> CanonicalDeserialize for $wrapper<E> where E: $se {
+//             #[inline]
+//             fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+//                 let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize(&mut reader)?;
+//                 Ok($wrapper(affine_point.into_projective()))
+//             }
             
-            #[inline]
-            fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-                let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize_uncompressed(&mut reader)?;
-                Ok($wrapper(affine_point.into_projective()))
-            }
+//             #[inline]
+//             fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+//                 let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize_uncompressed(&mut reader)?;
+//                 Ok($wrapper(affine_point.into_projective()))
+//             }
             
-            #[inline]
-            fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-                let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
-                Ok($wrapper(affine_point.into_projective()))
-            }
+//             #[inline]
+//             fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+//                 let affine_point = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
+//                 Ok($wrapper(affine_point.into_projective()))
+//             }
             
-        }
+//         }
         
-    }
+//     }
+// }
+
+// 
+
+macro_rules! to_and_from_bytes_dervie {
+     ($wrapper:tt,$group:tt,$se:tt,$de:tt) => {
+                      
+         impl<E: EngineBLS> ToBytes for  $wrapper<E>  { 
+             #[inline]
+             fn write<W: Write>(&self, mut writer: W) -> IoResult<()> {
+                 self.0.write(&mut writer)
+             }
+         }
+
+         impl<E: EngineBLS> FromBytes for $wrapper<E> {
+             #[inline]
+             fn read<R: Read>(mut reader: R) -> IoResult<Self> {
+                 let wrapped = E::$group::read(&mut reader)?;
+                 Ok(Self(wrapped))
+             }
+         }
+     }
 }
 
-pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
-    CanonicalSerialize +
-    CanonicalDeserialize 
-{
+ //     //TODO: when const generic becomes stable we get the size from the trait and return
+ //     //constant size array
+ //     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
+ //          let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
+ //          self.serialize(&mut serialized_representation[..]).unwrap();
 
-     //TODO: when const generic becomes stable we get the size from the trait and return
-     //constant size array
-     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
-          let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
-          self.serialize(&mut serialized_representation[..]).unwrap();
+ //          return serialized_representation;
 
-          return serialized_representation;
+ //     }
 
-     }
+ //    fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
+ //        Self::deserialize(bytes.as_slice())
+ //     }
+ // }
 
-    fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
-        Self::deserialize(bytes.as_slice())
-     }
- }
-
-impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
-impl <E: EngineBLS> SerializableToBytes<96> for PublicKey<E>  {}
+// impl <E: EngineBLS> SerializableToBytes<{ E::SIGNATURE_SERIALIZED_SIZE }> for Signature<E> {}
+// impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
 
 // //////// END MACROS //////// //
 
 //, CanonicalSerialize, CanonicalDeserialize)]
 /// Detached BLS Signature 
-#[derive(Debug)] //, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
 // TODO: Serialization
 
 broken_derives!(Signature);  // Actually the derive works for this one, not sure why.
 // borrow_wrapper!(Signature,SignatureGroup,0);
-serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
+//serialization!(Signature,SignatureGroup,EngineBLS,EngineBLS);
+to_and_from_bytes_dervie!(Signature,SignatureGroup,EngineBLS,EngineBLS);
 
 impl<E: EngineBLS> Signature<E> {
     //const DESCRIPTION : &'static str = "A BLS signature"; 
@@ -403,9 +422,8 @@ impl<E: EngineBLS> Signature<E> {
     }
 }
 
-
 /// BLS Public Key
-#[derive(Debug)]
+#[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // TODO: Serialization
 
@@ -416,7 +434,7 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // }
 
 broken_derives!(PublicKey);
-serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
+//serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
@@ -425,8 +443,6 @@ impl<E: EngineBLS> PublicKey<E> {
         signature.verify(message,self)
     }
 }
-
-
 
 /// BLS Keypair
 ///
