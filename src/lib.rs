@@ -93,7 +93,6 @@ extern crate arrayref;
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
-extern crate ark_std;
 extern crate ark_ff;
 extern crate ark_ec;
 extern crate rand;
