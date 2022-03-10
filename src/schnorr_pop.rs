@@ -40,10 +40,10 @@ impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for SecretKey<E>
         self.into_vartime().0.serialize(&mut secret_key_as_bytes[..]).unwrap();
         affine_public_key.serialize(&mut public_key_as_bytes[..]).unwrap();        
         
-        let secret_key_hash = <H as Digest>::new().chain(secret_key_as_bytes);
-        let public_key_hash = <H as Digest>::new().chain(public_key_as_bytes);
+        let secret_key_hash = <H as Digest>::new().chain_update(secret_key_as_bytes);
+        let public_key_hash = <H as Digest>::new().chain_update(public_key_as_bytes);
 
-        let mut scalar_bytes = <H as Digest>::new().chain(secret_key_hash.finalize()).chain(public_key_hash.finalize()).finalize();
+        let mut scalar_bytes = <H as Digest>::new().chain_update(secret_key_hash.finalize()).chain_update(public_key_hash.finalize()).finalize();
 	    let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
 	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
         <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap()
@@ -76,7 +76,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for SecretKey<E> {
         let mut r_point_as_bytes = Vec::<u8>::new();
         r_point.into_affine().write(&mut r_point_as_bytes).unwrap();
 
-        let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(message.0).finalize();
+        let mut k_as_hash = <H as Digest>::new().chain_update(r_point_as_bytes).chain_update(message.0).finalize();
 	    let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
 	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 
@@ -103,7 +103,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
         schnorr_point.into_affine().write(&mut schnorr_point_as_bytes).unwrap();
 
-        let mut scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).chain(message.0).finalize();
+        let mut scalar_bytes = <H as Digest>::new().chain_update(schnorr_point_as_bytes).chain_update(message.0).finalize();
 	    let random_scalar = scalar_bytes.as_mut_slice();
 	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 

@@ -100,7 +100,6 @@ extern crate rand_core;
 extern crate rand_chacha;
 extern crate sha3;
 extern crate digest;
-extern crate fdh;
 
 #[cfg(feature = "serde")]
 extern crate serde;
@@ -135,16 +134,16 @@ pub struct Message(pub [u8; MESSAGE_SIZE]);
 
 impl Message {
     pub fn new(context: &'static [u8], message: &[u8]) -> Message {
-        use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+        use sha3::{Shake128, digest::{Update, ExtendableOutput, XofReader}};
         let mut h = Shake128::default();
-        h.input(context);
+        h.update(context);
         let l = message.len() as u64;
-        h.input(l.to_le_bytes());
-        h.input(message);
+        h.update(&l.to_le_bytes());
+        h.update(message);
         // let mut t = ::merlin::Transcript::new(context);
         // t.append_message(b"", message);
         let mut msg = [0u8; MESSAGE_SIZE];
-        h.xof_result().read(&mut msg[..]);
+        h.finalize_xof().read(&mut msg[..]);
         // t.challenge_bytes(b"", &mut msg);
         Message(msg)
     }

@@ -22,7 +22,7 @@ use std::ops::{MulAssign};
 use ark_ff::{Field, PrimeField, SquareRootField, UniformRand};
 use ark_ec::{AffineCurve, ProjectiveCurve, PairingEngine};
 use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField}};
-use ark_ec::hashing::field_hashers::DefaultFieldHasher;
+use ark_ec::hashing::field_hashers::DefaultHasher as DefaultFieldHasher;
 use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
 use ark_ff::{One};
 use rand::{Rng};
@@ -32,7 +32,6 @@ use ark_ff::bytes::{ToBytes};
 use std::fmt::Debug;
 
 use sha2::Sha256; //IETF standard asks for SHA256
-use fdh::{FullDomainHash};
 
 use ark_ec::bls12::Bls12Parameters;
 use core::marker::PhantomData;
@@ -235,7 +234,7 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
 
     const SIGNATURE_SERIALIZED_SIZE : usize = 96;
 
-    type HashToSignatureField =  DefaultFieldHasher<FullDomainHash::<Sha256>>;    
+    type HashToSignatureField = DefaultFieldHasher<Sha256, 128>;
     type MapToSignatureCurve = WBMap<P::G2Parameters>;
     
     fn miller_loop<'a,I>(i: I) -> E::Fqk
@@ -267,7 +266,7 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
     }
 
     fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve> {
-	MapToCurveBasedHasher::<E::G2Affine, DefaultFieldHasher<FullDomainHash::<Sha256>>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
+	    MapToCurveBasedHasher::<E::G2Affine, DefaultFieldHasher<Sha256, 128>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
     }
     
 }

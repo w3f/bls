@@ -30,7 +30,7 @@ use ark_ec::ProjectiveCurve;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
 use rand::{Rng, thread_rng, SeedableRng};
-use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+use sha3::{Shake128, digest::{Update,  ExtendableOutput, XofReader}};
 use rand_chacha::ChaCha8Rng;
 
 use std::iter::once;
@@ -546,15 +546,15 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// construction from Theorem 2 on page 32 in appendex C of
     /// ["Ouroboros Praos: An adaptively-secure, semi-synchronous proof-of-stake blockchain"](https://eprint.iacr.org/2017/573.pdf)
     /// by Bernardo David, Peter Gazi, Aggelos Kiayias, and Alexander Russell.
-    pub fn vrf_hash<H: Input>(&self, h: &mut H) {
-        h.input(b"msg");
-        h.input(&self.message.0[..]);
-        h.input(b"out");
+    pub fn vrf_hash<H: ExtendableOutput>(&self, h: &mut H) {
+        h.update(b"msg");
+        h.update(&self.message.0[..]);
+        h.update(b"out");
         let affine_signature = self.signature.0.into_affine();
         let mut serialized_signature = vec![0; affine_signature.uncompressed_size()];
         affine_signature.serialize_uncompressed(&mut serialized_signature[..]).unwrap();
 
-        h.input(& serialized_signature);
+        h.update(& serialized_signature);
     }
 
     /// Raw bytes output from a BLS signature regarded as a VRF.
@@ -564,10 +564,10 @@ impl<E: EngineBLS> SignedMessage<E> {
     /// If called with distinct contexts then outputs should be independent.
     pub fn make_bytes<Out: Default + AsMut<[u8]>>(&self, context: &[u8]) -> Out {
         let mut t = Shake128::default();
-        t.input(context);
+        t.update(context);
         self.vrf_hash(&mut t);
         let mut seed = Out::default();
-        XofReader::read(&mut t.xof_result(), seed.as_mut());
+        XofReader::read(&mut t.finalize_xof(), seed.as_mut());
         seed
     }
 

@@ -14,10 +14,9 @@ arrayref = "0.3"
 rand = "0.8"
 rand_core = "0.6"
 rand_chacha = "0.3"
-sha3 = "0.8"
-sha2 = "0.9.2" # held low due to fdh 
-digest = "0.9.0"
-fdh = "0.7.3"
+sha3 = "0.10"
+sha2 = "0.10"
+digest = "0.10"
 
 ark-ff = { version = "0.3", default-features = false }
 ark-ec = { version = "0.3", default-features = true }
@@ -32,9 +31,9 @@ serde = { version = "1.0", default-features = false, optional = true }
 thiserror = "1.0"
 
 [patch.crates-io]
-ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb'}
-ark-ff = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb'}
-ark-serialize = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb'}
-ark-serialize-derive = { git = "https://github.com/w3f/arkworks-algebra", branch = 'hash_to_curve_wb'}
+ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
+ark-ff = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
+ark-serialize = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
+ark-serialize-derive = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
 ark-bls12-381 = { git = "https://github.com/w3f/arkworks-curves", branch = 'skalman-bls12-377-wb-hash2curve'}
 ark-bls12-377 = { git = "https://github.com/w3f/arkworks-curves", branch = 'skalman-bls12-377-wb-hash2curve'}

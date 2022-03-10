@@ -18,7 +18,7 @@ use ark_ff::BigInteger;
 use ark_ec::ProjectiveCurve;
 
 use rand::{Rng, thread_rng};
-use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+use sha3::{Shake128, digest::{Update, ExtendableOutput, XofReader}};
 
 use std::collections::HashMap;
 
@@ -81,10 +81,10 @@ impl<E: EngineBLS> Delinearized<E> {
     }
     pub fn new_keyed(key: &[u8]) -> Delinearized<E> {
         let mut t = Shake128::default();
-        t.input(b"Delinearised BLS with key:");
+        t.update(b"Delinearised BLS with key:");
         let l = key.len() as u64;
-        t.input(l.to_le_bytes());
-        t.input(key);
+        t.update(&l.to_le_bytes());
+        t.update(key);
         Delinearized::new(t)
     }
     pub fn new_batched_rng<R: Rng>(mut rng: R) -> Delinearized<E> {
@@ -105,15 +105,15 @@ impl<E: EngineBLS> Delinearized<E> {
         let pk_affine = publickey.0.into_affine();
         let mut pk_uncompressed = vec![0;  pk_affine.uncompressed_size()];        
         pk_affine.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
-        t.input(pk_uncompressed);
+        t.update(&pk_uncompressed);
         let mut b = [0u8; 16];
-        t.xof_result().read(&mut b[..]);
+        t.finalize_xof().read(&mut b[..]);
         let (x,y) = array_refs!(&b,8,8);
         let mut x: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*x).into();
         let y: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*y).into();
         x.muln(64);
-        x.add_nocarry(&y);
-        <E::Scalar as PrimeField>::from_repr(x).unwrap()
+        x.add_with_carry(&y);
+        <E::Scalar as PrimeField>::from_bigint(x).unwrap()
     }
 
     /// Add only a `Signature<E>` to our internal signature,
@@ -163,8 +163,8 @@ impl<E: EngineBLS> Delinearized<E> {
     // TODO: See https://github.com/dalek-cryptography/merlin/pull/37
     pub fn agreement(&self, other: &Delinearized<E>) -> bool {
         let mut c = [[0u8; 16]; 2];
-        self.key.clone().xof_result().read(&mut c[0]);
-        other.key.clone().xof_result().read(&mut c[1]);
+        self.key.clone().finalize_xof().read(&mut c[0]);
+        other.key.clone().finalize_xof().read(&mut c[1]);
         c[0] == c[1]
     }
 
