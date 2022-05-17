@@ -82,6 +82,7 @@ pub trait EngineBLS {
     type PublicKeyPrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::PublicKeyGroupAffine>;
 
     const PUBLICKEY_SERIALIZED_SIZE : usize;
+    const SECRET_KEY_SIZE : usize;
 
     /// Group where BLS signatures live
     ///
@@ -226,6 +227,7 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fq;
 
     const PUBLICKEY_SERIALIZED_SIZE : usize = 48;
+    const SECRET_KEY_SIZE : usize = 32;
 
     type SignatureGroup = E::G2Projective;
     type SignatureGroupAffine = E::G2Affine;
