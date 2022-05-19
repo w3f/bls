@@ -133,6 +133,9 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 ///
 /// TODO: Is Pippenger’s algorithm, or another fast MSM algorithm,
 /// secure when used with key splitting?
+
+/// Secret signing key including the side channel protections from
+/// key splitting.
 pub struct SecretKey<E: EngineBLS> {
     key: [E::Scalar; 2],
     old_unsigned: E::SignatureGroup,
@@ -294,9 +297,62 @@ impl <E: EngineBLS> Eq for $wrapper<E> {}
 
 // //////// END MACROS //////// //
 
+/// Implementing de/serialization for secret keypair
+/// Note that deriving serialization for secret is not sensible
+/// as you need to conver them to vartime form first
+impl<E> CanonicalSerialize for SecretKey<E> where E: EngineBLS {
+    #[inline]
+    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.into_vartime().serialize(&mut writer)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn serialized_size(&self) -> usize {
+        self.into_vartime().serialized_size()
+    }
+
+    #[inline]
+    fn serialize_uncompressed<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.into_vartime().serialize_uncompressed(&mut writer)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn uncompressed_size(&self) -> usize {
+        self.into_vartime().uncompressed_size()
+    }
+
+    #[inline]
+    fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.into_vartime().uncompressed_size().serialize_unchecked(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
+    #[inline]
+    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize(&mut reader)?;
+        Ok(secret_key_vt.into_split_dirty())
+    }
+
+    #[inline]
+    fn deserialize_uncompressed<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_uncompressed(&mut reader)?;
+        Ok(secret_key_vt.into_split_dirty())
+    }
+
+    #[inline]
+    fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
+        Ok(secret_key_vt.into_split_dirty())
+    }
+
+}
+
 // Note that ark_ff::bytes::ToBytes for projective points export them without converting them to affine
 // and so they might leak information about the secret key.
-
 pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
     CanonicalSerialize +
     CanonicalDeserialize 
@@ -320,7 +376,10 @@ pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
 // impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
 impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
 impl <E: EngineBLS> SerializableToBytes<48> for PublicKey<E>  {}
+impl <E: EngineBLS> SerializableToBytes<32> for SecretKey<E>  {}
 
+/// because SecretKey is not canonically serializable and that we need to convert
+/// it to vartime first we need to manually re-implement this trait for secret keys
 //, CanonicalSerialize, CanonicalDeserialize)]
 /// Detached BLS Signature 
 #[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -620,7 +679,24 @@ mod tests {
         SignedMessage { message, publickey, signature }
         
     }
-    
+
+    /// generates a random secret key sign a message and convert the
+    /// key to bytes then reconvert it to key and derive its public key
+    /// And check if the signature still verifies    
+    fn test_serialize_deserialize_production_secret_key<E: PairingEngine, P: Bls12Parameters>() where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
+        let mut keypair  = Keypair::<UsualBLS<E,P>>::generate(thread_rng());
+        let serialized_secret_key = keypair.secret.to_bytes();
+        println!("secret key serialize size: {}, secret key first scaler serialize size {}", keypair.secret.serialized_size(), keypair.secret.key[0].serialized_size());
+
+        let good_message = Message::new(b"ctx",b"test message");
+
+        let sig = keypair.sign(good_message);
+
+        let deserialized_secret_key = SecretKey::<UsualBLS<E,P>>::from_bytes(&serialized_secret_key).unwrap();
+        let reconstructed_public_key = deserialized_secret_key.into_public();        
+        assert!( sig.verify(good_message,&reconstructed_public_key) );
+        
+    }
     // Commented to rid of unused warnings
     // TODO: add a test after making tinybls works
     
@@ -685,4 +761,15 @@ mod tests {
     fn single_messages_bls377() {
         test_single_bls_message::<Bls12_377,ark_bls12_377::Parameters>();
     }
+
+    #[test]
+    fn test_secret_key_serialization_for_zbls() {
+        test_serialize_deserialize_production_secret_key::<Bls12_381, ark_bls12_381::Parameters>();
+    }
+
+    #[test]
+    fn test_secret_key_serialization_for_bls377() {
+        test_serialize_deserialize_production_secret_key::<Bls12_377, ark_bls12_377::Parameters>();
+    }
+
 }
