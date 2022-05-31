@@ -30,6 +30,9 @@ zeroize = { version = "1.0", default-features = false, features = [ "zeroize_der
 serde = { version = "1.0", default-features = false, optional = true }
 thiserror = "1.0"
 
+[dev-dependencies]
+hex-literal = "0.3.4"
+
 [patch.crates-io]
 ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
 ark-ff = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}

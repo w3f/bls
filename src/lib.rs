@@ -117,7 +117,7 @@ pub mod schnorr_pop;
 
 pub use engine::*;
 
-pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SerializableToBytes};
+pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage, SerializableToBytes};
 pub use bit::{BitSignedMessage,CountSignedMessage};
 
 

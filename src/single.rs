@@ -23,7 +23,7 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ark_ff::{UniformRand, Zero};
+use ark_ff::{UniformRand, Zero, Field};
 
 use ark_ec::AffineCurve;
 use ark_ec::ProjectiveCurve;
@@ -52,6 +52,11 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     pub fn generate<R: Rng>(mut rng: R) -> Self {
         SecretKeyVT( E::generate(&mut rng) )
     }
+
+    pub fn from_seed(seed: &[u8]) -> Self {
+        SecretKeyVT( <E::Scalar as Field>::from_random_bytes(seed).expect("any byte array can be interpreted as an element of the field mod its characteristic. Q.E.D"))
+    }
+
 }
 
 impl<E: EngineBLS> SecretKeyVT<E> {
@@ -168,6 +173,10 @@ impl<E: EngineBLS> SecretKey<E> where E: EngineBLS {
         let mut s = Self::generate_dirty(&mut rng);
         s.init_point_mutation(rng);
         s
+    }
+
+    pub fn from_seed(seed: &[u8]) -> Self {
+        SecretKeyVT::from_seed(seed).into_split_dirty()
     }
 }
 
@@ -669,6 +678,9 @@ mod tests {
     use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
     
     use super::*;
+
+    use hex_literal::hex;
+    use core::convert::TryInto;
     
     fn bls_engine_bytes_test<E: PairingEngine, P: Bls12Parameters>(x: SignedMessage<UsualBLS<E,P>>) -> SignedMessage<UsualBLS<E, P>> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
         let SignedMessage { message, publickey, signature } = x;
@@ -694,9 +706,20 @@ mod tests {
 
         let deserialized_secret_key = SecretKey::<UsualBLS<E,P>>::from_bytes(&serialized_secret_key).unwrap();
         let reconstructed_public_key = deserialized_secret_key.into_public();        
-        assert!( sig.verify(good_message,&reconstructed_public_key) );
-        
+        assert!( sig.verify(good_message,&reconstructed_public_key) );        
     }
+
+    fn test_deserialize_random_value_as_secret_key_fails<E: PairingEngine, P: Bls12Parameters>(random_seed: &[u8]) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
+
+        match SecretKey::<UsualBLS<E,P>>::from_bytes(random_seed.try_into().expect("the size of the seed be 32 Bytes.")) {
+            Ok(_) => assert!(false, "random seed should not be canonically deserializable to a secret key."),
+            Err(SerializationError::InvalidData) => (),
+            _ => assert!(false, "unexpected deserialization error.")
+        }
+
+    }
+
+    
     // Commented to rid of unused warnings
     // TODO: add a test after making tinybls works
     
@@ -770,6 +793,12 @@ mod tests {
     #[test]
     fn test_secret_key_serialization_for_bls377() {
         test_serialize_deserialize_production_secret_key::<Bls12_377, ark_bls12_377::Parameters>();
+    }
+
+    #[test]
+    fn test_deserialize_random_value_as_secret_key_fails_for_bls377() {
+        let random_seed  = hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+        test_deserialize_random_value_as_secret_key_fails::<Bls12_377, ark_bls12_377::Parameters>(random_seed.as_slice());
     }
 
 }
