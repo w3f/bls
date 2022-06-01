@@ -21,8 +21,8 @@ use std::ops::{MulAssign};
 
 use ark_ff::{Field, PrimeField, SquareRootField, UniformRand};
 use ark_ec::{AffineCurve, ProjectiveCurve, PairingEngine};
-use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve, HashToField}};
-use ark_ec::hashing::field_hashers::DefaultFieldHasher;
+use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve}};
+use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
 use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
 use ark_ff::{One};
 use rand::{Rng};

@@ -24,13 +24,15 @@
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
 use ark_ff::{UniformRand, Zero, Field};
-
+use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
+       
 use ark_ec::AffineCurve;
 use ark_ec::ProjectiveCurve;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
 use rand::{Rng, thread_rng, SeedableRng};
 use sha3::{Shake128, digest::{Update,  ExtendableOutput, XofReader}};
+use sha2::Sha256;
 use rand_chacha::ChaCha8Rng;
 
 use std::iter::once;
@@ -54,7 +56,8 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     }
 
     pub fn from_seed(seed: &[u8]) -> Self {
-        SecretKeyVT( <E::Scalar as Field>::from_random_bytes(seed).expect("any byte array can be interpreted as an element of the field mod its characteristic. Q.E.D"))
+        let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
+        return SecretKeyVT(hasher.hash_to_field(seed, 1)[0]);
     }
 
 }

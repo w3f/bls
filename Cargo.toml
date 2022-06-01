@@ -34,10 +34,10 @@ thiserror = "1.0"
 hex-literal = "0.3.4"
 
 [patch.crates-io]
-ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
-ark-ff = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
-ark-serialize = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
-ark-serialize-derive = { git = "https://github.com/w3f/arkworks-algebra", branch = 'ietf-hasher'}
+ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'master'}
+ark-ff = { git = "https://github.com/w3f/arkworks-algebra", branch = 'master'}
+ark-serialize = { git = "https://github.com/w3f/arkworks-algebra", branch = 'master'}
+ark-serialize-derive = { git = "https://github.com/w3f/arkworks-algebra", branch = 'master'}
 ark-bls12-381 = { git = "https://github.com/w3f/arkworks-curves", branch = 'skalman-bls12-377-wb-hash2curve'}
 ark-bls12-377 = { git = "https://github.com/w3f/arkworks-curves", branch = 'skalman-bls12-377-wb-hash2curve'}
 ark-std = { git = "https://github.com/arkworks-rs/std"}
