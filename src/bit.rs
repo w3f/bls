@@ -124,7 +124,7 @@ pub enum SignerTableError {
     /// Attempted to use missmatched proof-of-possession tables. 
     BadSignerTable(&'static str),
     /// Attempted to aggregate distint messages, which requires the 
-    /// the more general BatchAssumingProofsOfPossession type instead.
+    /// the more general SignatureAggregatorAssumingPoP type instead.
     MismatchedMessage,
     /// Aggregation is impossible due to signers being repeated or
     /// repeated too many times in both sets or multi-sets, respectively.
@@ -565,7 +565,7 @@ mod tests {
         }
         assert!( bitsig1.merge(&bitsig2).is_err() );
 
-        let mut multimsg = pop::BatchAssumingProofsOfPossession::<ZBLS>::new();
+        let mut multimsg = pop::SignatureAggregatorAssumingPoP::<ZBLS>::new();
         multimsg.aggregate(&bitsig1);
         multimsg.aggregate(&bitsig2);
         assert!( multimsg.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)

@@ -52,12 +52,12 @@ Anyone who receives the already aggregated signature along with a list of messag
 
 We recommend distinct message aggregation like this primarily for verifying proofs-of-possession, meaning checking the self certificates for numerous keys.
 
-Assuming you already have proofs-of-possession, then you'll want to do aggregation with `BitPoPSignedMessage` or some variant tuned to your use case.  We recommend more care when using `BatchAssumingProofsOfPossession` because it provides no mechanism for checking a proof-of-possession table.
+Assuming you already have proofs-of-possession, then you'll want to do aggregation with `BitPoPSignedMessage` or some variant tuned to your use case.  We recommend more care when using `SignatureAggregatorAssumingPoP` because it provides no mechanism for checking a proof-of-possession table.
 
-The library offers method for generating and verifying proof of positions based on [Schnorr Signature](https://en.wikipedia.org/wiki/Schnorr_signature) which is significantly faster to verify than when using BLS signature itself as proof of position. The following example demonstrate how to generate and verify proof of positions and then using `BatchAssumingProofsOfPossession` to batch and verify multiple BLS signatures.
+The library offers method for generating and verifying proof of positions based on [Schnorr Signature](https://en.wikipedia.org/wiki/Schnorr_signature) which is significantly faster to verify than when using BLS signature itself as proof of position. The following example demonstrate how to generate and verify proof of positions and then using `SignatureAggregatorAssumingPoP` to batch and verify multiple BLS signatures.
 
 ```rust
-use bls_like::{Keypair,ZBLS,Message,Signed, pop::BatchAssumingProofsOfPossession, pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier}};
+use bls_like::{Keypair,ZBLS,Message,Signed, pop::SignatureAggregatorAssumingPoP, pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier}};
 use sha2::Sha512;
 
 let mut keypairs = [Keypair::<ZBLS>::generate(::rand::thread_rng()), Keypair::<ZBLS>::generate(::rand::thread_rng())];
@@ -71,7 +71,7 @@ let publickeys_with_pop = keypairs.iter().map(|k|(k.public,<dyn ProofOfPossessio
 let publickeys = publickeys_with_pop.iter().map(|(publickey, pop) | {assert!(<dyn ProofOfPossessionVerifier<ZBLS, Sha512>>::verify_pok(publickey, challenge_message, *pop)); publickey}).collect::<Vec<_>>();
 
 let mut batch_poped = msgs.iter().zip(publickeys).zip(sigs).fold(
-    BatchAssumingProofsOfPossession::<ZBLS>::new(),
+    SignatureAggregatorAssumingPoP::<ZBLS>::new(),
     |mut bpop,((message, publickey),sig)| { bpop.add_message_n_publickey(message, &publickey); bpop.add_signature(&sig); bpop }
 );
 assert!(batch_poped.verify())

@@ -99,14 +99,14 @@ pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> {
 }
 
 #[derive(Clone)]
-pub struct BatchAssumingProofsOfPossession<E: EngineBLS> {
+pub struct SignatureAggregatorAssumingPoP <E: EngineBLS> {
     messages_n_publickeys: HashMap<Message,PublicKey<E>>,
     signature: Signature<E>,
 }
 
-impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
-    pub fn new() -> BatchAssumingProofsOfPossession<E> {
-        BatchAssumingProofsOfPossession {
+impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
+    pub fn new() -> SignatureAggregatorAssumingPoP<E> {
+        SignatureAggregatorAssumingPoP {
             messages_n_publickeys: HashMap::new(),
             signature: Signature(E::SignatureGroup::zero()),
         }
@@ -145,7 +145,7 @@ impl<E: EngineBLS> BatchAssumingProofsOfPossession<E> {
 }
 
 
-impl<'a,E: EngineBLS> Signed for &'a BatchAssumingProofsOfPossession<E> {
+impl<'a,E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
     type E = E;
 
     type M = &'a Message;
@@ -201,7 +201,7 @@ mod tests {
         let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
         let good_sig1 = keypair1.sign(good);
 
-        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -222,7 +222,7 @@ mod tests {
         let good_sig0 = keypair.sign(good0);
         let good_sig1 = keypair.sign(good1);
 
-        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -244,7 +244,7 @@ mod tests {
         let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
         let good_sig1 = keypair1.sign(good1);
 
-        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -261,7 +261,7 @@ mod tests {
         let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
         let good_sig = keypair.sign(good);
 
-        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
         aggregated_sigs.add_signature(&good_sig);
         aggregated_sigs.add_signature(&good_sig);
 
@@ -282,7 +282,7 @@ mod tests {
         let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
         let bad_sig1 = keypair1.sign(bad1);
 
-        let mut aggregated_sigs = BatchAssumingProofsOfPossession::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&bad_sig1);
 
