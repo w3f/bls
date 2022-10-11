@@ -246,13 +246,10 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
              Self::SignaturePrepared,
         )>
 	{
-	    let i_a = i.into_iter().map(|(x,y)| (x.clone()))
-		    .collect::<Vec<(Self::PublicKeyPrepared)>>();
-	    let i_b = i.into_iter().map(|(x,y)| (y.clone()))
-               .collect::<Vec<(Self::SignaturePrepared)>>();
+	    let (i_a, i_b) : (Vec<(Self::PublicKeyPrepared)>, Vec<(Self::SignaturePrepared)>) = i.into_iter().cloned().unzip();
 
 
-        E::multi_miller_loop(i_a, i_b)
+            E::multi_miller_loop(i_a, i_b)
     }
 
     fn pairing<G1,G2>(p: G1, q: G2) -> E::TargetField
@@ -260,19 +257,19 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
         G1: Into<E::G1Affine>,
         G2: Into<E::G2Affine>,
     {
-        E::pairing(p,q)
+        E::pairing(p.into(),q.into()).0
     }
 
     /// Prepared negative of the generator of the public key curve.
     fn public_key_minus_generator_prepared()
      -> Self::PublicKeyPrepared
     {
-        let g1_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
-        (-g1_minus_generator).into()
+        let g1_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::generator();
+        <Self::PublicKeyGroup as Into<Self::PublicKeyPrepared>>::into(-g1_minus_generator.into_group())
     }
 
     fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
-	    MapToCurveBasedHasher::<E::G2Affine, DefaultFieldHasher<Sha256, 128>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
+	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
     }
     
 }

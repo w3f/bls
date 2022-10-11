@@ -93,7 +93,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-        PublicKey( <E::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator().mul(self.0) )
+        PublicKey( <E::PublicKeyGroup as CurveGroup>::Affine::generator().into_group()*self.0)
         // let mut g = <E::PublicKeyGroup as CurveGroup>::one();
         // g *= self.0;
         // PublicKey(p)
@@ -252,9 +252,9 @@ impl<E: EngineBLS> SecretKey<E> {
     /// We do not resplit for side channel protections here since
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
-        let generator = <E::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
-        let mut publickey = generator.mul(self.key[0]);
-        publickey += & generator.mul(self.key[1]);
+        let generator = <E::PublicKeyGroup as CurveGroup>::Affine::generator();
+        let mut publickey =  generator * self.key[0];
+        publickey +=  generator.into_group() * self.key[1];
         PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
         /*
@@ -319,12 +319,12 @@ impl<E> CanonicalSerialize for SecretKey<E> where E: EngineBLS {
         writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), SerializationError> {
-        self.into_vartime().serialize_with_mode(self, writer, compress)
+        self.into_vartime().serialize_with_mode(writer, compress)
     }
 
     #[inline]
     fn serialize_compressed<W: Write>(&self, writer: W) -> Result<(), SerializationError> {
-        self.into_vartime().serialize(&mut writer)?;
+        self.into_vartime().serialize_compressed(writer)?;
         Ok(())
     }
 
@@ -354,7 +354,7 @@ impl<E> CanonicalSerialize for SecretKey<E> where E: EngineBLS {
 impl<E> Valid for SecretKey<E> where E: EngineBLS { 
 	fn check(&self) -> Result<(), SerializationError> {
 		//TODO probabaly turn into vartime and check that because vartime impl valid
-		match (self.key[1].check(), self.key[2].check) {
+		match (self.key[1].check(), self.key[2].check()) {
 			(Ok(()),Ok(())) => Ok(()),
 			_ => Err(SerializationError::InvalidData),
 		}
@@ -374,7 +374,7 @@ impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
 
     #[inline]
     fn deserialize_compressed<R: Read>(reader: R) -> Result<Self, SerializationError> {
-        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_compressed(&mut reader)?;
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_compressed(reader)?;
         Ok(secret_key_vt.into_split_dirty())
     }
 
@@ -386,7 +386,7 @@ impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
 
     #[inline]
     fn deserialize_uncompressed_unchecked<R: Read>(reader: R) -> Result<Self, SerializationError> {
-        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_uncompressed_unchecked(&mut reader)?;
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_uncompressed_unchecked(reader)?;
         Ok(secret_key_vt.into_split_dirty())
     }
 
@@ -400,14 +400,14 @@ pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
 {
     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
         let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
-        self.serialize(&mut serialized_representation[..]).unwrap();
+        self.serialize_uncompressed(&mut serialized_representation[..]).unwrap();
 
         return serialized_representation;
 
      }
 
     fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
-        Self::deserialize(bytes.as_slice())
+        Self::deserialize_uncompressed(bytes.as_slice())
      }
  }
 

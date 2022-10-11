@@ -61,12 +61,12 @@ pub fn verify_simple<S: Signed>(s: S) -> bool {
     let mut gpk = Vec::with_capacity(l);
     let mut gms = Vec::with_capacity(l+1);
     for (message,publickey) in itr {
-        gpk.push( publickey.borrow().0.clone() );
+        gpk.push( publickey.borrow().0.clone());
         gms.push( message.borrow().hash_to_signature_curve::<S::E>() );
     }
-    <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(gpk.as_mut_slice());
+    <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(gpk.as_mut_slice());
     gms.push(signature);
-    <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(gms.as_mut_slice());
+    <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(gms.as_mut_slice());
     let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(gms.pop().unwrap());
     let prepared = gpk.iter().zip(gms)
         .map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(pk.into_affine()), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
@@ -103,7 +103,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
         messages.push( m.borrow().hash_to_signature_curve::<S::E>() );
     }
     if normalize_public_keys {
-        <<S as Signed>::E as EngineBLS>::PublicKeyGroup::batch_normalization(publickeys.as_mut_slice());
+        <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(publickeys.as_mut_slice());
     }
 
     // We next accumulate message points with the same signer.
@@ -135,7 +135,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // We finally normalize the messages and signature
 
     messages.push(signature);
-    <<S as Signed>::E as EngineBLS>::SignatureGroup::batch_normalization(messages.as_mut_slice());
+    <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(messages.as_mut_slice());
     let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(messages.pop().unwrap().into_affine());
     // TODO: Assess if we could cache normalized message hashes anyplace
     // using interior mutability, but probably this does not work well

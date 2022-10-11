@@ -9,6 +9,7 @@ use digest::{Digest};
 
 use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
 use ark_ec::{Group, CurveGroup};
+use ark_ff::{PrimeField};
 
 use super::Message;
 
@@ -28,23 +29,21 @@ trait BLSSchnorrPoPGenerator<E: EngineBLS, H: Digest> : ProofOfPossessionGenerat
 
 impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for SecretKey<E>
 {
-    /// TODO: BROKEN NOW Switch to https://github.com/arkworks-rs/algebra/pull/164/files
     fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField {
-        let mut secret_key_as_bytes = vec![0;  self.into_vartime().0.serialized_size()];
+        let mut secret_key_as_bytes = vec![0;  self.into_vartime().0.uncompressed_size()];
 
         let affine_public_key = self.into_public().0.into_affine();
-        let mut public_key_as_bytes = vec![0;  affine_public_key.serialized_size()];
+        let mut public_key_as_bytes = vec![0;  affine_public_key.uncompressed_size()];
 
-        self.into_vartime().0.serialize(&mut secret_key_as_bytes[..]).unwrap();
-        affine_public_key.serialize(&mut public_key_as_bytes[..]).unwrap();        
+        self.into_vartime().0.serialize_uncompressed(&mut secret_key_as_bytes[..]).unwrap();
+        affine_public_key.serialize_uncompressed(&mut public_key_as_bytes[..]).unwrap();        
         
         let secret_key_hash = <H as Digest>::new().chain_update(secret_key_as_bytes);
         let public_key_hash = <H as Digest>::new().chain_update(public_key_as_bytes);
 
         let mut scalar_bytes = <H as Digest>::new().chain_update(secret_key_hash.finalize()).chain_update(public_key_hash.finalize()).finalize();
-	    let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
-	    random_scalar[31] &= 31; // BROKEN HACK DO NOT DEPLOY
-        <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField as CanonicalDeserialize>::deserialize_uncompressed_unchecked(&*random_scalar).unwrap()
+	let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
+        <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(&*random_scalar)
     }
 
 }
@@ -72,13 +71,12 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for SecretKey<E> {
         r_point *= r; //todo perhaps we need to mandate E to have  a hard coded point
 
         let mut r_point_as_bytes = Vec::<u8>::new();
-        r_point.into_affine().write(&mut r_point_as_bytes).unwrap();
+        r_point.into_affine().serialize_uncompressed(&mut r_point_as_bytes).unwrap();
 
         let mut k_as_hash = <H as Digest>::new().chain_update(r_point_as_bytes).chain_update(message.0).finalize();
-	    let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
-	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
+	let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
 
-        let k = <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField as CanonicalDeserialize>::deserialize_uncompressed_unchecked(&*random_scalar).unwrap();
+        let k = <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(&*random_scalar);
         let s = (k * self.into_vartime().0) + r;
 
         ::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
@@ -99,7 +97,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
         schnorr_point += k_public_key;
 
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
-        schnorr_point.into_affine().write(&mut schnorr_point_as_bytes).unwrap();
+        schnorr_point.into_affine().serialize_uncompressed(&mut schnorr_point_as_bytes).unwrap();
 
         let mut scalar_bytes = <H as Digest>::new().chain_update(schnorr_point_as_bytes).chain_update(message.0).finalize();
 	    let random_scalar = scalar_bytes.as_mut_slice();
