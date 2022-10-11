@@ -400,14 +400,14 @@ pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
 {
     fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
         let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
-        self.serialize_uncompressed(&mut serialized_representation[..]).unwrap();
+        self.serialize_compressed(&mut serialized_representation[..]).unwrap();
 
         return serialized_representation;
 
      }
 
     fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
-        Self::deserialize_uncompressed(bytes.as_slice())
+        Self::deserialize_compressed(bytes.as_slice())
      }
  }
 
@@ -631,7 +631,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 impl<E: EngineBLS> SignedMessage<E> {
     #[cfg(test)]
     pub fn verify_slow(&self) -> bool {
-        let g1_one = <E::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
+        let g1_one = <E::PublicKeyGroup as CurveGroup>::Affine::generator();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }
@@ -702,7 +702,7 @@ impl<E: EngineBLS> SignedMessage<E> {
 
 #[cfg(test)]
 mod tests {
-    use ark_ec::PairingEngine;
+    use ark_ec::pairing::Pairing as PairingEngine;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_377::Bls12_377;
     use ark_ec::bls12::Bls12Parameters;
@@ -714,7 +714,7 @@ mod tests {
     use hex_literal::hex;
     use core::convert::TryInto;
     
-    fn bls_engine_bytes_test<E: PairingEngine, P: Bls12Parameters>(x: SignedMessage<UsualBLS<E,P>>) -> SignedMessage<UsualBLS<E, P>> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
+    fn bls_engine_bytes_test<E: PairingEngine, P: Bls12Parameters>(x: SignedMessage<UsualBLS<E,P>>) -> SignedMessage<UsualBLS<E, P>> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2> {
         let SignedMessage { message, publickey, signature } = x;
 
         let publickey = PublicKey::<UsualBLS<E,P>>::from_bytes(&publickey.to_bytes()).unwrap();
@@ -727,10 +727,10 @@ mod tests {
     /// generates a random secret key sign a message and convert the
     /// key to bytes then reconvert it to key and derive its public key
     /// And check if the signature still verifies    
-    fn test_serialize_deserialize_production_secret_key<E: PairingEngine, P: Bls12Parameters>() where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
+    fn test_serialize_deserialize_production_secret_key<E: PairingEngine, P: Bls12Parameters>() where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2> {
         let mut keypair  = Keypair::<UsualBLS<E,P>>::generate(thread_rng());
         let serialized_secret_key = keypair.secret.to_bytes();
-        println!("secret key serialize size: {}, secret key first scaler serialize size {}", keypair.secret.serialized_size(), keypair.secret.key[0].serialized_size());
+        println!("secret key serialize size: {}, secret key first scaler serialize size {}", keypair.secret.uncompressed_size(), keypair.secret.key[0].uncompressed_size());
 
         let good_message = Message::new(b"ctx",b"test message");
 
@@ -741,7 +741,7 @@ mod tests {
         assert!( sig.verify(good_message,&reconstructed_public_key) );        
     }
 
-    fn test_deserialize_random_value_as_secret_key_fails<E: PairingEngine, P: Bls12Parameters>(random_seed: &[u8]) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
+    fn test_deserialize_random_value_as_secret_key_fails<E: PairingEngine, P: Bls12Parameters>(random_seed: &[u8]) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2> {
 
         match SecretKey::<UsualBLS<E,P>>::from_bytes(random_seed.try_into().expect("the size of the seed be 32 Bytes.")) {
             Ok(_) => assert!(false, "random seed should not be canonically deserializable to a secret key."),
@@ -764,10 +764,10 @@ mod tests {
     //     SignedMessage { message, publickey, signature }
     // }
 
-    // bls_engine_bytes_tester!(UsualBLS, Bls12_381, 48);
-    // bls_engine_bytes_tester!(UsualBLS, Bls12_377, 48);
+    //bls_engine_bytes_tester!(UsualBLS, Bls12_381, 48);
+    //bls_engine_bytes_tester!(UsualBLS, Bls12_377, 48);
     
-    fn test_single_bls_message<E: PairingEngine, P: Bls12Parameters>() where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine> {
+    fn test_single_bls_message<E: PairingEngine, P: Bls12Parameters>() where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2> {
 
         let good = Message::new(b"ctx",b"test message");
 
@@ -807,6 +807,21 @@ mod tests {
                 "Verification of a signature on a different message passed!");
     }
 
+	#[test]
+	fn  zbls_engine_bytes_test() {
+	    let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+            let good_sig0 = keypair.signed_message(Message::new(b"ctx",b"test message"));
+
+	    bls_engine_bytes_test(good_sig0);
+    }
+	 #[test]
+	 fn bls377_engine_bytes_test() {
+	    let mut keypair  = Keypair::<UsualBLS<Bls12_377, ark_bls12_377::Parameters>>::generate(thread_rng());
+            let good_sig0 = keypair.signed_message(Message::new(b"ctx",b"test message"));
+
+	    bls_engine_bytes_test(good_sig0);
+	 }
+	
     #[test]
     fn single_messages_zbls() {
         test_single_bls_message::<Bls12_381, ark_bls12_381::Parameters>();
