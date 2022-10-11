@@ -14,10 +14,10 @@
 //!
 //! We imagine this simplification helps focus on more important
 //! optimizations, like placing `batch_normalization` calls well.
-//! We could exploit `ProjectiveCurve: += _mixed` function
+//! We could exploit `CurveGroup: += _mixed` function
 //! if we had seperate types for affine points, but if doing so 
 //! improved performance enough then we instead suggest tweaking
-//! `ProjectiveCurve::add_mixed` to test for normalized points.
+//! `CurveGroup::add_mixed` to test for normalized points.
 //!
 //! TODO: Add serde support for serialization throughout.  See
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
@@ -26,10 +26,10 @@
 use ark_ff::{UniformRand, Zero, Field};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
        
-use ark_ec::AffineCurve;
-use ark_ec::ProjectiveCurve;
+use ark_ec::AffineRepr;
+use ark_ec::CurveGroup;
 
-use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize};
+use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize, Valid, Validate, Compress};
 use rand::{Rng, thread_rng, SeedableRng};
 use sha3::{Shake128, digest::{Update,  ExtendableOutput, XofReader}};
 use sha2::Sha256;
@@ -93,8 +93,8 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
         // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-        PublicKey( <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator().mul(self.0) )
-        // let mut g = <E::PublicKeyGroup as ProjectiveCurve>::one();
+        PublicKey( <E::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator().mul(self.0) )
+        // let mut g = <E::PublicKeyGroup as CurveGroup>::one();
         // g *= self.0;
         // PublicKey(p)
     }
@@ -252,15 +252,15 @@ impl<E: EngineBLS> SecretKey<E> {
     /// We do not resplit for side channel protections here since
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
-        let generator = <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
+        let generator = <E::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
         let mut publickey = generator.mul(self.key[0]);
         publickey += & generator.mul(self.key[1]);
         PublicKey(publickey)
         // TODO str4d never decided on projective vs affine here, so benchmark this.
         /*
-        let mut x = <E::PublicKeyGroup as ProjectiveCurve>::one();
+        let mut x = <E::PublicKeyGroup as CurveGroup>::one();
         x *= self.0;
-        let y = <E::PublicKeyGroup as ProjectiveCurve>::one();
+        let y = <E::PublicKeyGroup as CurveGroup>::one();
         y *= self.1;
         x += &y;
         PublicKey(x)
@@ -314,14 +314,23 @@ impl <E: EngineBLS> Eq for $wrapper<E> {}
 /// as you need to conver them to vartime form first
 impl<E> CanonicalSerialize for SecretKey<E> where E: EngineBLS {
     #[inline]
-    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+    fn serialize_with_mode<W: Write>(
+        &self,
+        writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), SerializationError> {
+        self.into_vartime().serialize_with_mode(self, writer, compress)
+    }
+
+    #[inline]
+    fn serialize_compressed<W: Write>(&self, writer: W) -> Result<(), SerializationError> {
         self.into_vartime().serialize(&mut writer)?;
         Ok(())
     }
 
     #[inline]
-    fn serialized_size(&self) -> usize {
-        self.into_vartime().serialized_size()
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.into_vartime().serialized_size(compress)
     }
 
     #[inline]
@@ -335,17 +344,37 @@ impl<E> CanonicalSerialize for SecretKey<E> where E: EngineBLS {
         self.into_vartime().uncompressed_size()
     }
 
-    #[inline]
-    fn serialize_unchecked<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        self.into_vartime().uncompressed_size().serialize_unchecked(&mut writer)?;
-        Ok(())
-    }
+    // #[inline]
+    // fn serialize_uncompressed_<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+    //     self.into_vartime().uncompressed_size().serialize_unchecked(&mut writer)?;
+    //     Ok(())
+    // }
+}
+
+impl<E> Valid for SecretKey<E> where E: EngineBLS { 
+	fn check(&self) -> Result<(), SerializationError> {
+		//TODO probabaly turn into vartime and check that because vartime impl valid
+		match (self.key[1].check(), self.key[2].check) {
+			(Ok(()),Ok(())) => Ok(()),
+			_ => Err(SerializationError::InvalidData),
+		}
+        }
+    
 }
 
 impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
+    fn deserialize_with_mode<R: Read>(
+        reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+            let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_with_mode(reader, compress, validate)?;
+	    Ok(secret_key_vt.into_split_dirty())
+    }
+
     #[inline]
-    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize(&mut reader)?;
+    fn deserialize_compressed<R: Read>(reader: R) -> Result<Self, SerializationError> {
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_compressed(&mut reader)?;
         Ok(secret_key_vt.into_split_dirty())
     }
 
@@ -356,8 +385,8 @@ impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
     }
 
     #[inline]
-    fn deserialize_unchecked<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_unchecked(&mut reader)?;
+    fn deserialize_uncompressed_unchecked<R: Read>(reader: R) -> Result<Self, SerializationError> {
+        let secret_key_vt = <SecretKeyVT::<E> as CanonicalDeserialize>::deserialize_uncompressed_unchecked(&mut reader)?;
         Ok(secret_key_vt.into_split_dirty())
     }
 
@@ -602,7 +631,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
 impl<E: EngineBLS> SignedMessage<E> {
     #[cfg(test)]
     pub fn verify_slow(&self) -> bool {
-        let g1_one = <E::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
+        let g1_one = <E::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
         let message = self.message.hash_to_signature_curve::<E>().into_affine();
         E::pairing(g1_one, self.signature.0.into_affine()) == E::pairing(self.publickey.0.into_affine(), message)
     }

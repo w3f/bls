@@ -8,7 +8,7 @@ use std::borrow::{Borrow,BorrowMut};
 use std::iter::{once};
 
 use ark_ff::{Zero};
-use ark_ec::ProjectiveCurve;
+use ark_ec::CurveGroup;
 
 use super::*;
 use super::single::SignedMessage;

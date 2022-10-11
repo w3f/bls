@@ -19,16 +19,14 @@
 use std::borrow::{Borrow};
 use std::ops::{MulAssign};
 
-use ark_ff::{Field, PrimeField, SquareRootField, UniformRand};
-use ark_ec::{AffineCurve, ProjectiveCurve, PairingEngine};
+use ark_ff::{Field, PrimeField, UniformRand,One, Zero};
+use ark_ec::{AffineRepr, CurveGroup, pairing::{Pairing, PairingOutput, MillerLoopOutput}};
 use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve}};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
 use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
-use ark_ff::{One};
 use rand::{Rng};
 use rand_core::RngCore;
 
-use ark_ff::bytes::{ToBytes};
 use std::fmt::Debug;
 
 use sha2::Sha256; //IETF standard asks for SHA256
@@ -58,8 +56,8 @@ use core::marker::PhantomData;
 /// We also extract two functions users may with to override:
 /// random scalar generation and hashing to the singature curve.
 pub trait EngineBLS {
-    type Engine: PairingEngine; //<Fr = Self::Scalar>;
-    type Scalar: PrimeField + SquareRootField; // = <Self::Engine as ScalarEngine>::Fr;
+    type Engine: Pairing; //<Fr = Self::Scalar>;
+    type Scalar: PrimeField; // = <Self::Engine as ScalarEngine>::Fr;
     /// Group where BLS public keys live
     /// 
     /// You should take this to be the `Engine::G1` curve usually
@@ -67,19 +65,19 @@ pub trait EngineBLS {
     /// even scalar multiplicaitons with delinearization.
     type PublicKeyGroupBaseField: Field;
     type PublicKeyGroupAffine:
-    AffineCurve<ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField, Projective = Self::PublicKeyGroup>
+    AffineRepr<ScalarField = Self::Scalar, Group = Self::PublicKeyGroup>
         + From<Self::PublicKeyGroup>
         + Into<Self::PublicKeyGroup>
         + Into<Self::PublicKeyPrepared>;
-        //+ Into<<Self::PublicKeyGroup as ProjectiveCurve>::Affine>;
+        //+ Into<<Self::PublicKeyGroup as CurveGroup>::Affine>;
 
     type PublicKeyGroup: 
-        ProjectiveCurve<Affine = Self::PublicKeyGroupAffine, ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField>
+        CurveGroup<Affine = Self::PublicKeyGroupAffine, ScalarField = Self::Scalar, BaseField = Self::PublicKeyGroupBaseField>
         + From<Self::PublicKeyGroupAffine>
         + Into<Self::PublicKeyGroupAffine>
 	+ MulAssign<Self::Scalar>;
     
-    type PublicKeyPrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::PublicKeyGroupAffine>;
+    type PublicKeyPrepared: Default + Clone + Send + Sync + Debug + From<Self::PublicKeyGroupAffine>;
 
     const PUBLICKEY_SERIALIZED_SIZE : usize;
     const SECRET_KEY_SIZE : usize;
@@ -92,22 +90,22 @@ pub trait EngineBLS {
     type SignatureGroupBaseField: Field;
 
     type SignatureGroupAffine:
-        AffineCurve<ScalarField = Self::Scalar, BaseField = Self::SignatureGroupBaseField, Projective = Self::SignatureGroup>
+        AffineRepr<ScalarField = Self::Scalar,  Group = Self::SignatureGroup>
         + From<Self::SignatureGroup>
         + Into<Self::SignatureGroup>
 	+ Into<Self::SignaturePrepared>;
     
-    type SignatureGroup:  ProjectiveCurve<Affine = Self::SignatureGroupAffine, ScalarField = Self::Scalar, BaseField = Self::SignatureGroupBaseField>
+    type SignatureGroup:  CurveGroup<Affine = Self::SignatureGroupAffine, ScalarField = Self::Scalar, BaseField = Self::SignatureGroupBaseField>
         + Into<Self::SignatureGroupAffine>
 	+ From<Self::SignatureGroupAffine>
 	+ MulAssign<Self::Scalar>;
 
-    type SignaturePrepared: ToBytes + Default + Clone + Send + Sync + Debug + From<Self::SignatureGroupAffine>;
+    type SignaturePrepared: Default + Clone + Send + Sync + Debug + From<Self::SignatureGroupAffine>;
 
     const SIGNATURE_SERIALIZED_SIZE : usize;
     
     type HashToSignatureField: HashToField<Self::SignatureGroupBaseField>;
-    type MapToSignatureCurve: MapToCurve<Self::SignatureGroupAffine>;
+    type MapToSignatureCurve: MapToCurve<Self::SignatureGroup>;
 
     /// Generate a random scalar for use as a secret key.
     fn generate<R: Rng + RngCore>(rng: &mut R) -> Self::Scalar {
@@ -115,16 +113,16 @@ pub trait EngineBLS {
     }
 
     /// getter function for the hash to curve map
-    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve>;
+    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve>;
     
     /// Hash one message to the signature curve.
     fn hash_to_signature_curve<M: Borrow<[u8]>>(message: M) -> Self::SignatureGroup {
-        Self::hash_to_curve_map().hash(message.borrow()).unwrap().into_projective()
+        Self::hash_to_curve_map().hash(message.borrow()).unwrap().into_group()
     }
 
     /// Run the Miller loop from `Engine` but orients its arguments
     /// to be a `SignatureGroup` and `PublicKeyGroup`.
-    fn miller_loop<'a,I>(i: I) -> <Self::Engine as PairingEngine>::Fqk
+    fn miller_loop<'a,I>(i: I) -> MillerLoopOutput<Self::Engine>
     where
         Self::PublicKeyPrepared: 'a,
         Self::SignaturePrepared: 'a,
@@ -134,16 +132,16 @@ pub trait EngineBLS {
         )>;
 
     /// Perform final exponentiation on the result of a Miller loop.
-    fn final_exponentiation(e: &<Self::Engine as PairingEngine>::Fqk) -> Option<<Self::Engine as PairingEngine>::Fqk> {
+    fn final_exponentiation(e: MillerLoopOutput<Self::Engine>) -> Option<PairingOutput<Self::Engine>> {
         Self::Engine::final_exponentiation(e)
     }
 
     /// Performs a pairing operation `e(p, q)` by calling `Engine::pairing`
     /// but orients its arguments to be a `PublicKeyGroup` and `SignatureGroup`.
-    fn pairing<G1,G2>(p: G1, q: G2) -> <Self::Engine as PairingEngine>::Fqk
+    fn pairing<G1,G2>(p: G1, q: G2) -> <Self::Engine as Pairing>::TargetField
     where
-        G1: Into<<Self::PublicKeyGroup as ProjectiveCurve>::Affine>,
-        G2: Into<<Self::SignatureGroup as ProjectiveCurve>::Affine>;
+        G1: Into<<Self::PublicKeyGroup as CurveGroup>::Affine>,
+        G2: Into<<Self::SignatureGroup as CurveGroup>::Affine>;
     /*
     {
         Self::final_exponentiation(&Self::miller_loop(
@@ -172,9 +170,9 @@ pub trait EngineBLS {
         )>
     {
         let lhs: [_;1] = [(Self::public_key_minus_generator_prepared(),signature)];
-        Self::final_exponentiation( & Self::miller_loop(
+        Self::final_exponentiation( Self::miller_loop(
             inputs.into_iter().map(|t| t).chain(&lhs)
-	) ).unwrap() == <Self::Engine as PairingEngine>::Fqk::one()
+	) ).unwrap() == (PairingOutput::<Self::Engine>::zero()) //zero is the target_field::one !!
     }
     
     /// Prepared negative of the generator of the public key curve.
@@ -214,32 +212,32 @@ pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
 /// scalar multiplications with delinearization. 
 /// We also orient this variant to match zcash's traits.
 #[derive(Default)]
-pub struct UsualBLS<E: PairingEngine, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine>;
+pub struct UsualBLS<E: Pairing, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as Pairing>::G2>;
 
-impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as PairingEngine>::G2Affine>
+impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as Pairing>::G2>
 {
     type Engine = E;
-    type Scalar = <Self::Engine as PairingEngine>::Fr;
+    type Scalar = <Self::Engine as Pairing>::ScalarField;
 
-    type PublicKeyGroup = E::G1Projective;
+    type PublicKeyGroup = E::G1;
     type PublicKeyGroupAffine = E::G1Affine;
     type PublicKeyPrepared = E::G1Prepared;
-    type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fq;
+    type PublicKeyGroupBaseField = <<E as Pairing>::G1 as CurveGroup>::BaseField;
 
     const PUBLICKEY_SERIALIZED_SIZE : usize = 48;
     const SECRET_KEY_SIZE : usize = 32;
 
-    type SignatureGroup = E::G2Projective;
+    type SignatureGroup = E::G2;
     type SignatureGroupAffine = E::G2Affine;
     type SignaturePrepared = E::G2Prepared;
-    type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+    type SignatureGroupBaseField =  <<E as Pairing>::G2 as CurveGroup>::BaseField;
 
     const SIGNATURE_SERIALIZED_SIZE : usize = 96;
 
     type HashToSignatureField = DefaultFieldHasher<Sha256, 128>;
     type MapToSignatureCurve = WBMap<P::G2Parameters>;
     
-    fn miller_loop<'a,I>(i: I) -> E::Fqk
+    fn miller_loop<'a,I>(i: I) -> MillerLoopOutput<E>
     where
         // Self::PublicKeyPrepared: 'a,
         // Self::SignaturePrepared: 'a,
@@ -247,11 +245,17 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
              Self::PublicKeyPrepared,
              Self::SignaturePrepared,
         )>
-    {
-        E::miller_loop(i)
+	{
+	    let i_a = i.into_iter().map(|(x,y)| (x.clone()))
+		    .collect::<Vec<(Self::PublicKeyPrepared)>>();
+	    let i_b = i.into_iter().map(|(x,y)| (y.clone()))
+               .collect::<Vec<(Self::SignaturePrepared)>>();
+
+
+        E::multi_miller_loop(i_a, i_b)
     }
 
-    fn pairing<G1,G2>(p: G1, q: G2) -> E::Fqk
+    fn pairing<G1,G2>(p: G1, q: G2) -> E::TargetField
     where
         G1: Into<E::G1Affine>,
         G2: Into<E::G2Affine>,
@@ -263,11 +267,11 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
     fn public_key_minus_generator_prepared()
      -> Self::PublicKeyPrepared
     {
-        let g1_minus_generator = <Self::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
+        let g1_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
         (-g1_minus_generator).into()
     }
 
-    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroupAffine, Self::HashToSignatureField, Self::MapToSignatureCurve> {
+    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
 	    MapToCurveBasedHasher::<E::G2Affine, DefaultFieldHasher<Sha256, 128>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
     }
     
@@ -325,7 +329,7 @@ impl<E: PairingEngine, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P 
 //     fn public_key_minus_generator_prepared()
 //      -> Self::PublicKeyPrepared
 //     {
-//         let g2_minus_generator = <Self::PublicKeyGroup as ProjectiveCurve>::Affine::prime_subgroup_generator();
+//         let g2_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
 //         (-g2_minus_generator).into()
 //     }
 
