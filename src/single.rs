@@ -30,7 +30,9 @@ use ark_ec::AffineRepr;
 use ark_ec::CurveGroup;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize, Valid, Validate, Compress};
-use rand::{Rng, thread_rng, SeedableRng};
+use rand::{Rng, SeedableRng};
+#[cfg(feature = "std")]
+use rand::thread_rng;
 use sha3::{Shake128, digest::{Update,  ExtendableOutput, XofReader}};
 use sha2::Sha256;
 use rand_chacha::ChaCha8Rng;
@@ -565,7 +567,7 @@ impl<E: EngineBLS> Keypair<E> {
         self.secret.sign(message,rng)
     }
 
-    
+    #[cfg(feature = "std")]
     /// Sign a message creating a `Signature` using the default `ThreadRng`.
     pub fn sign(&mut self, message: Message) -> Signature<E> {
         	self.sign_with_rng(message,thread_rng())
@@ -750,7 +752,6 @@ mod tests {
         }
 
     }
-
     
     // Commented to rid of unused warnings
     // TODO: add a test after making tinybls works

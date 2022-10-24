@@ -10,13 +10,13 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-arrayref = "0.3"
-rand = "0.8"
-rand_core = "0.6"
-rand_chacha = "0.3"
-sha3 = "0.10"
-sha2 = "0.10"
-digest = "0.10"
+arrayref = { version = "0.3", default-features = false }
+rand = { version = "0.8.5", default-features = false, optional = true}
+rand_core = { version = "0.6", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
+sha3 = { version = "0.10", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+digest = { version = "0.10", default-features = false }
 
 ark-ff = { version = "0.3", default-features = false }
 ark-ec = { version = "0.3", default-features = true }
@@ -28,10 +28,16 @@ ark-bls12-377 = { version = "0.3", default-features = false, features = [ "curve
 
 zeroize = { version = "1.0", default-features = false, features = [ "zeroize_derive" ] }
 serde = { version = "1.0", default-features = false, optional = true }
-thiserror = "1.0"
+thiserror = { version = "1.0", default-features = false }
 
 [dev-dependencies]
 hex-literal = "0.3.4"
+
+[features]
+default = ["std"]
+std = [
+    "rand/std"
+]
 
 [patch.crates-io]
 ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'master'}

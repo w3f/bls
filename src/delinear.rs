@@ -16,8 +16,9 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::CanonicalSerialize;
 use ark_ff::BigInteger;
 use ark_ec::CurveGroup;
-
-use rand::{Rng, thread_rng};
+#[cfg(feature = "std")]
+use rand::thread_rng;
+use rand::{Rng};
 use sha3::{Shake128, digest::{Update, ExtendableOutput, XofReader}};
 
 use std::collections::HashMap;
