@@ -81,9 +81,7 @@
 //!
 
 
-//#![feature(associated_type_defaults)]
-//#![feature(array_methods)]
-#[doc = include_str!("../README.md")]
+#[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
 

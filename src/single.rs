@@ -23,19 +23,21 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
-use ark_ff::{UniformRand, Zero, Field};
+use ark_ff::{UniformRand, Zero};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
        
 use ark_ec::AffineRepr;
 use ark_ec::CurveGroup;
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize, Valid, Validate, Compress};
-use rand::{Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 #[cfg(feature = "std")]
 use rand::thread_rng;
 use sha3::{Shake128, digest::{Update,  ExtendableOutput, XofReader}};
 use sha2::Sha256;
 use rand_chacha::ChaCha8Rng;
+
+use digest::{Digest};
 
 use std::iter::once;
 
@@ -117,12 +119,14 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// so that even an adversary who tracks all signed messages cannot
 /// foresee the curve points being signed. 
 ///
+#[cfg_attr(feature = "std", doc = r##"
 /// We require mutable access to the secret key, but interior mutability
 /// can easily be employed, which might resemble:
 /// ```rust,no_run
 /// # extern crate bls_like as bls;
 /// # extern crate rand;
 /// # use bls::{SecretKey,ZBLS,Message};
+/// # #[cfg(feature=std)]
 /// # use rand::thread_rng;
 /// # let message = Message::new(b"ctx",b"test message");
 /// let mut secret = ::std::cell::RefCell::new(SecretKey::<ZBLS>::generate(thread_rng()));
@@ -131,6 +135,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// If however `secret: Mutex<SecretKey>` or `secret: RwLock<SecretKey>`
 /// then one might avoid holding the write lock while signing, or even
 /// while sampling the random numbers by using other methods.
+"##)]
 ///
 /// Right now, we serialize using `SecretKey::into_vartime` and
 /// `SecretKeyVT::write`, so `secret.into_vartime().write(writer)?`.
@@ -567,16 +572,37 @@ impl<E: EngineBLS> Keypair<E> {
         self.secret.sign(message,rng)
     }
 
+    /// Sign a message using a Seedabale RNG created from user supplied seed
+    pub fn sign_with_random_seed(&mut self, message: Message, seed: [u8; 32]) -> Signature<E> {
+        self.sign_with_rng::<StdRng>(message, SeedableRng::from_seed(seed))
+    }
+
+    /// Sign a message using a Seedabale RNG created from a seed derived from the message and key
+    pub fn sign(&mut self, message: Message) -> Signature<E> {
+        let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
+
+        let mut serialized_part1 : Vec<u8> = vec![];
+        let mut serialized_part2 : Vec<u8> = vec![]; 
+        self.secret.key[0].serialize_compressed(&mut serialized_part1[..]).unwrap();
+        self.secret.key[1].serialize_compressed(&mut serialized_part2[..]).unwrap();
+        
+        let mut seed_digest  = Sha256::new().chain_update(serialized_part1).chain_update(serialized_part2).chain_update(message.0);
+
+        let seed : [u8; 32] = seed_digest.finalize().into();
+
+        self.sign_with_rng::<StdRng>(message, SeedableRng::from_seed(seed))
+    }
+
     #[cfg(feature = "std")]
     /// Sign a message creating a `Signature` using the default `ThreadRng`.
-    pub fn sign(&mut self, message: Message) -> Signature<E> {
+    pub fn sign_thread_rng(&mut self, message: Message) -> Signature<E> {
         	self.sign_with_rng(message,thread_rng())
     }
 
     
     /// Create a `SignedMessage` using the default `ThreadRng`.
     pub fn signed_message(&mut self, message: Message) -> SignedMessage<E> {
-	let signature = self.sign_with_rng(message,thread_rng());
+	let signature = self.sign(message);
         SignedMessage {
             message,
             publickey: self.public,
@@ -702,7 +728,7 @@ impl<E: EngineBLS> SignedMessage<E> {
 }
 
 
-#[cfg(test)]
+#[cfg(all(test, feature="std"))]
 mod tests {
     use ark_ec::pairing::Pairing as PairingEngine;
     use ark_bls12_381::Bls12_381;

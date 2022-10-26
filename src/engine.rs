@@ -19,7 +19,7 @@
 use std::borrow::{Borrow};
 use std::ops::{MulAssign};
 
-use ark_ff::{Field, PrimeField, UniformRand,One, Zero};
+use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_ec::{AffineRepr, CurveGroup, pairing::{Pairing, PairingOutput, MillerLoopOutput}};
 use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve}};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
@@ -246,7 +246,7 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
              Self::SignaturePrepared,
         )>
 	{
-	    let (i_a, i_b) : (Vec<(Self::PublicKeyPrepared)>, Vec<(Self::SignaturePrepared)>) = i.into_iter().cloned().unzip();
+	    let (i_a, i_b) : (Vec<Self::PublicKeyPrepared>, Vec<Self::SignaturePrepared>) = i.into_iter().cloned().unzip();
 
 
             E::multi_miller_loop(i_a, i_b)

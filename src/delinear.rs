@@ -92,6 +92,8 @@ impl<E: EngineBLS> Delinearized<E> {
         let r = rng.gen::<[u8; 32]>();
         Delinearized::new_keyed(&r[..])
     }
+
+    #[cfg(feature = "std")]
     pub fn new_batched() -> Delinearized<E> {
         Delinearized::new_batched_rng(thread_rng())
     }
@@ -199,7 +201,7 @@ pub struct DelinearizedRepeatedSigners<E: EngineBLS> {
 }
 */
 
-#[cfg(test)]
+#[cfg(all(test, feature="std"))]
 mod tests {
     use super::*;
 

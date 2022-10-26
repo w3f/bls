@@ -169,7 +169,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature="std"))]
 mod tests {
 
     use crate::Message;

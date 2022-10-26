@@ -8,7 +8,7 @@ use std::borrow::{Borrow,BorrowMut};
 use std::iter::{once};
 
 use ark_ff::{Zero};
-use ark_ec::{Group, CurveGroup};
+use ark_ec::{Group};
 
 use super::*;
 use super::single::SignedMessage;
@@ -522,7 +522,7 @@ where
 }
 
 
-#[cfg(test)]
+#[cfg(all(test, feature="std"))]
 mod tests {
     use rand::{thread_rng};  // Rng
 

@@ -7,7 +7,7 @@ use crate::single::{SecretKey,PublicKey};
 
 use digest::{Digest};
 
-use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
+use ark_serialize::{CanonicalSerialize};
 use ark_ec::{Group, CurveGroup};
 use ark_ff::{PrimeField};
 
@@ -110,8 +110,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
 
 }
 
-#[cfg(test)]
-
+#[cfg(all(test,feature="std"))]
 mod tests {
     #[test]
     fn bls_pop_sign() {

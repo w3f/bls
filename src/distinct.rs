@@ -187,7 +187,7 @@ impl<'a,E: EngineBLS> FromIterator<&'a SignedMessage<E>> for DistinctMessagesRes
 */
 
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use rand::{thread_rng};  // Rng
 

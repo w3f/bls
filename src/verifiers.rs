@@ -64,12 +64,12 @@ pub fn verify_simple<S: Signed>(s: S) -> bool {
         gpk.push( publickey.borrow().0.clone());
         gms.push( message.borrow().hash_to_signature_curve::<S::E>() );
     }
-    <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(gpk.as_mut_slice());
+    let gpk = <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(gpk.as_mut_slice());
     gms.push(signature);
-    <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(gms.as_mut_slice());
+    let mut gms = <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(gms.as_mut_slice());
     let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(gms.pop().unwrap());
     let prepared = gpk.iter().zip(gms)
-        .map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(pk.into_affine()), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
+        .map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(*pk), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
         .collect::<Vec<(_,_)>>();
     S::E::verify_prepared( signature, prepared.iter())
 }
@@ -102,9 +102,11 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
         publickeys.push( pk.borrow().0.clone() );
         messages.push( m.borrow().hash_to_signature_curve::<S::E>() );
     }
-    if normalize_public_keys {
-        <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(publickeys.as_mut_slice());
-    }
+    let mut affine_publickeys = if normalize_public_keys {
+         <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(&publickeys)
+    } else {
+        publickeys.iter().map(|pk| pk.into_affine()).collect::<Vec<_>>()
+    };
 
     // We next accumulate message points with the same signer.
     // We could avoid the allocation here if we sorted both 
@@ -115,8 +117,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
     type AA<E> = (PublicKeyAffine<E>, SignatureProjective<E>);
     let mut pks_n_ms = HashMap::with_capacity(l);
-    for (pk,m) in publickeys.drain(..)
-        .map(|pk| pk.into_affine() )
+    for (pk,m) in affine_publickeys.drain(..)
                             .zip(messages.drain(..)) 
     {
         let mut pk_uncompressed = vec![0;  pk.uncompressed_size()];        
@@ -135,11 +136,11 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // We finally normalize the messages and signature
 
     messages.push(signature);
-    <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(messages.as_mut_slice());
-    let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(messages.pop().unwrap().into_affine());
+    let mut affine_messages = <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(messages.as_mut_slice());
+    let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(affine_messages.pop().unwrap());
     // TODO: Assess if we could cache normalized message hashes anyplace
     // using interior mutability, but probably this does not work well
-    // with our optimization of collecting messages with thesame signer.
+    // with ur optimization of collecting messages with thesame signer.
 
     // And verify the aggregate signature.
     let  prepared = publickeys.iter().zip(messages).map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(*pk), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })

@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 arrayref = { version = "0.3", default-features = false }
-rand = { version = "0.8.5", default-features = false, optional = true}
+rand = { version = "0.8.5", default-features = false}
 rand_core = { version = "0.6", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
 sha3 = { version = "0.10", default-features = false }
