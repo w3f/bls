@@ -42,7 +42,7 @@ use std::collections::HashMap;
 use ark_ff::{Zero};
 
 use super::*;
-use super::verifiers::verify_with_distinct_messages;
+use super::verifiers::{verify_with_distinct_messages, verify_using_aggregated_auxiliary_public_keys};
 
 
 /// Batch or aggregate BLS signatures with attached messages and
@@ -84,7 +84,7 @@ use super::verifiers::verify_with_distinct_messages;
 
 pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
 
-use single::PublicKey;
+use single::{PublicKey, PublicKeyInSignatureGroup};
 /// ProofOfPossion trait which should be implemented by secret
 pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
     /// The proof of possession generator is supposed to
@@ -100,8 +100,9 @@ pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> {
 
 #[derive(Clone)]
 pub struct SignatureAggregatorAssumingPoP <E: EngineBLS> {
-    messages_n_publickeys: HashMap<Message,PublicKey<E>>,
+    messages_n_publickeys: HashMap<Message,PublicKey<E>>,    
     signature: Signature<E>,
+    aggregated_auxiliary_public_key: PublicKeyInSignatureGroup<E>,
 }
 
 impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
@@ -109,6 +110,7 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
         SignatureAggregatorAssumingPoP {
             messages_n_publickeys: HashMap::new(),
             signature: Signature(E::SignatureGroup::zero()),
+            aggregated_auxiliary_public_key: PublicKeyInSignatureGroup(E::SignatureGroup::zero()),
         }
     }
 
@@ -130,6 +132,11 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
             .or_insert(*publickey);
     }
 
+    /// Aggregate the auxiliary public keys in the signature group to be used verification using aux key
+    pub fn add_auxiliary_public_key(&mut self, publickey_in_signature_group: &PublicKeyInSignatureGroup<E>) {
+        self.aggregated_auxiliary_public_key.0 += publickey_in_signature_group.0;
+    }
+
     /// Aggregage BLS signatures assuming they have proofs-of-possession
     pub fn aggregate<'a,S>(&mut self, signed: &'a S) 
     where
@@ -142,8 +149,12 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
         }
         self.add_signature(&signature);
     }
+    
+    pub fn verify_using_aggregated_auxiliary_public_keys(&self)-> bool {
+        verify_using_aggregated_auxiliary_public_keys(self, true, self.aggregated_auxiliary_public_key.0)
+    }    
+    
 }
-
 
 impl<'a,E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
     type E = E;
@@ -168,6 +179,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
         // TODO: verify_with_gaussian_elimination(self)
     }
 }
+
 
 #[cfg(all(test, feature="std"))]
 mod tests {
@@ -291,4 +303,46 @@ mod tests {
 
         assert!(aggregated_sigs.verify() == false, "aggregated signature of a wrong message should not verify");
     }
+
+    fn generate_many_keypairs(num_of_keypairs: u32)-> Vec::<KeyPair::<TinyBLS377>> {
+        let mut keypairs : Vec::<KeyPair::<TinyBLS377>>  = vec![];
+        (0..num_of_keypairs).iter(map(|_| keypairs.add(KeyPair::<TinyBLS377>::generate(thread_rng()))));
+        keypairs
+        
+    }
+    #[test]
+    fn test_1000_tiny_aggregate_and_verify_in_g2() {
+
+        let mut keypairs = generate_many_keypairs(1000);
+        let message = Message::new(b"ctx",b"test message");
+        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        message.iter().keypairs.iter_mut().map(|(m,k)| aggregator.aggregate(k.signed_message(*m)));
+                                                 
+
+        aggregator.verify();
+    }
+
+    #[test]
+    fn test_1000_tiny_aggregate_only() {
+        let mut keypairs = generate_many_keypairs(1000);
+ 
+        let message = Message::new(b"ctx",b"test message");
+        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        message.iter().keypairs.iter_mut().map(|(m,k)| aggregator.aggregate(k.signed_message(*m)));
+                                                 
+    }
+
+    #[test]
+    fn test_1000_tiny_aggregate_and_verify_g1() {
+        let mut keypairs : Vec::<KeyPair::<TinyBLS377>>  = vec![];
+
+        let message = Message::new(b"ctx",b"test message");
+        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        message.iter().keypairs.iter_mut().map(|(m,k)| aggregator.aggregate(k.signed_message(*m)));
+                                                 
+    }
+
 }

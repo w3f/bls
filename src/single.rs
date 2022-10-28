@@ -104,6 +104,17 @@ impl<E: EngineBLS> SecretKeyVT<E> {
     }
 }
 
+
+trait DoublePublicKeyScheme<E: EngineBLS> {
+    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E>;
+
+}
+
+impl<E: EngineBLS> DoublePublicKeyScheme<E> for SecretKeyVT<E> {
+    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
+        PublicKeyInSignatureGroup( <E::SignatureGroup as CurveGroup>::Affine::generator().into_group()*self.0)       
+    }
+}
 /// Secret signing key that is split to provide side channel protection.
 ///
 /// A simple key splitting works because
@@ -423,7 +434,7 @@ pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
 // impl <E: EngineBLS> SerializableToBytes<{ E::SIGNATURE_SERIALIZED_SIZE }> for Signature<E> {}
 // impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
 impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
-impl <E: EngineBLS> SerializableToBytes<48> for PublicKey<E>  {}
+impl <E: EngineBLS> SerializableToBytes<96> for PublicKey<E>  {}
 impl <E: EngineBLS> SerializableToBytes<32> for SecretKey<E>  {}
 
 /// because SecretKey is not canonically serializable and that we need to convert
@@ -478,11 +489,15 @@ impl<E: EngineBLS> PublicKey<E> {
     }
 }
 
+#[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct PublicKeyInSignatureGroup<E: EngineBLS>(pub E::SignatureGroup);
+broken_derives!(PublicKeyInSignatureGroup);  // Actually the derive works for this one, not sure why.
+
 /// BLS Keypair
 ///
 /// We create `Signed` messages with a `Keypair` to avoid recomputing
 /// the public key, which usually takes longer than signing when
-/// the public key group is `G2`.
+/// the public key group is `G2`.2
 ///
 /// We provide constant-time signing using key splitting.
 pub struct KeypairVT<E: EngineBLS> {
@@ -495,6 +510,13 @@ impl<E: EngineBLS> Clone for KeypairVT<E> {
         secret: self.secret.clone(),
         public: self.public.clone(),
     } }
+}
+
+impl<E: EngineBLS> DoublePublicKeyScheme<E> for KeypairVT<E> {
+    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
+        self.secret.into_public_key_in_signature_group()
+    }
+    
 }
 
 // TODO: Serialization
@@ -558,6 +580,13 @@ impl<E: EngineBLS> Keypair<E> {
     }
 }
 
+impl<E: EngineBLS> DoublePublicKeyScheme<E> for Keypair<E> {
+    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
+        self.into_vartime().into_public_key_in_signature_group()
+    }
+    
+}
+
 impl<E: EngineBLS> Keypair<E> {
     /// Create a representative usable for operations lacking 
     /// side channel protections.  
@@ -598,7 +627,6 @@ impl<E: EngineBLS> Keypair<E> {
     pub fn sign_thread_rng(&mut self, message: Message) -> Signature<E> {
         	self.sign_with_rng(message,thread_rng())
     }
-
     
     /// Create a `SignedMessage` using the default `ThreadRng`.
     pub fn signed_message(&mut self, message: Message) -> SignedMessage<E> {
@@ -611,7 +639,6 @@ impl<E: EngineBLS> Keypair<E> {
     }
 
 }
-
 
 /// Message with attached BLS signature
 /// 

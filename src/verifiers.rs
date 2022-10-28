@@ -6,10 +6,14 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 
-use ark_ec::CurveGroup;
+use ark_ec::{CurveGroup, AffineRepr};
 use ark_serialize::{CanonicalSerialize};
+use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
 
+use digest::Digest;
+use sha2::Sha256;
 use super::*;
+
 
 
 // We define these convenience type alias here instead of engine.rs 
@@ -147,6 +151,110 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
         .collect::<Vec<(_,_)>>();
 
     S::E::verify_prepared( signature, prepared.iter() )
+
+    //let prepared = publickeys.iter().zip(&messages);
+    //S::E::verify_prepared( &signature, prepared )
+
+}
+
+/// BLS signature verification optimized for all unique messages
+///
+/// Assuming all messages are distinct, the minimum number of pairings
+/// is the number of unique signers, which we achieve here. 
+/// We do not verify message uniqueness here, but leave this to the
+/// aggregate signature type, like `DistinctMessages`.
+///
+/// We merge any messages with identical signers and batch normalize
+/// message points and the signature itself. 
+/// We optionally batch normalize the public keys in the event that
+/// they are provided by algerbaic operaations, but this sounds
+/// unlikely given our requirement that messages be distinct.
+pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(signed: &pop::SignatureAggregatorAssumingPoP<E>, normalize_public_keys: bool, aggregated_aux_pub_key: <E as EngineBLS>::SignatureGroup) -> bool {
+    let signature = Signed::signature(&signed).0;
+
+    let mut signature_as_bytes = vec![0;  signature.compressed_size()];
+    signature.serialize_compressed(&mut signature_as_bytes[..]).expect("compressed size has been alocated");
+
+    let itr = signed.messages_and_publickeys();
+    let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
+    let (first_message, first_public_key) =
+        match (signed.messages_and_publickeys().next()) {
+            Some((first_message, first_public_key)) => (first_message, first_public_key),
+            None => return false,
+        };
+
+    let mut first_public_key_as_bytes = vec![0;  first_public_key.compressed_size()];
+    first_public_key.serialize_compressed(&mut first_public_key_as_bytes[..]).expect("compressed size has been alocated");
+
+    let mut aggregated_aux_pub_key_as_bytes = vec![0;  aggregated_aux_pub_key.compressed_size()];
+    aggregated_aux_pub_key.serialize_compressed(&mut aggregated_aux_pub_key_as_bytes[..]).expect("compressed size has been alocated");
+
+    // We first hash the messages to the signature curve and
+    // normalize the public keys to operate on them as bytes.
+    // TODO: Assess if we should mutate in place using interior
+    // mutability, maybe using `BorrowMut` support in
+    // `batch_normalization`.
+
+    // deterministic randomness for adding aggregated auxiliary pub keys
+    //TODO you can't just assume that there is one pubickey you need to stop if they were more or aggregate them
+    let pseudo_random_scalar_seed : [u8; 32] = Sha256::new().chain_update(signature_as_bytes).chain_update(first_public_key_as_bytes).chain_update(aggregated_aux_pub_key_as_bytes).finalize().into();
+    let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
+    let pseudo_random_scalar : E::Scalar = hasher.hash_to_field(&pseudo_random_scalar_seed[..],1)[0];
+
+    let signature = signature + aggregated_aux_pub_key * pseudo_random_scalar;
+
+    let mut publickeys = Vec::with_capacity(l);
+    let mut messages = Vec::with_capacity(l+1);
+    for (m,pk) in itr {
+        publickeys.push( pk.borrow().0.clone() );
+        messages.push( m.borrow().hash_to_signature_curve::<E>() + E::SignatureGroupAffine::generator() * pseudo_random_scalar);
+    }
+    
+    let mut affine_publickeys = if normalize_public_keys {
+         <E as EngineBLS>::PublicKeyGroup::normalize_batch(&publickeys)
+    } else {
+        publickeys.iter().map(|pk| pk.into_affine()).collect::<Vec<_>>()
+    };
+
+    // We next accumulate message points with the same signer.
+    // We could avoid the allocation here if we sorted both 
+    // arrays in parallel.  This might mean (a) some sort function
+    // using `ops::IndexMut` instead of slices, and (b) wrapper types
+    // types to make tuples of slices satisfy `ops::IndexMut`.
+    // TODO:  Impl PartialEq, Eq, Hash for pairing::EncodedPoint
+    // to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
+    type AA<E> = (PublicKeyAffine<E>, SignatureProjective<E>);
+    let mut pks_n_ms = HashMap::with_capacity(l);
+    for (pk,m) in affine_publickeys.drain(..)
+                            .zip(messages.drain(..)) 
+    {
+        let mut pk_uncompressed = vec![0;  pk.uncompressed_size()];        
+        pk.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
+        pks_n_ms.entry(pk_uncompressed)
+            .and_modify(|(_pk0,m0):  &mut AA<E>| {*m0 += m;} )
+                .or_insert((pk,m));
+    }
+
+    let mut publickeys = Vec::with_capacity(l);
+    for (_,(pk,m)) in pks_n_ms.drain() {
+        messages.push(m);
+        publickeys.push(pk.clone());
+    }
+
+    // We finally normalize the messages and signature
+
+    messages.push(signature);
+    let mut affine_messages = <E as EngineBLS>::SignatureGroup::normalize_batch(messages.as_mut_slice());
+    let signature = <E as EngineBLS>::prepare_signature(affine_messages.pop().unwrap());
+    // TODO: Assess if we could cache normalized message hashes anyplace
+    // using interior mutability, but probably this does not work well
+    // with ur optimization of collecting messages with thesame signer.
+
+    // And verify the aggregate signature.
+    let  prepared = publickeys.iter().zip(messages).map(|(pk,m)| { (<E as EngineBLS>::prepare_public_key(*pk), <E as EngineBLS>::prepare_signature(m)) })
+        .collect::<Vec<(_,_)>>();
+
+    E::verify_prepared( signature, prepared.iter() )
 
     //let prepared = publickeys.iter().zip(&messages);
     //S::E::verify_prepared( &signature, prepared )

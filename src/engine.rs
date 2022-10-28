@@ -169,14 +169,14 @@ pub trait EngineBLS {
             Self::SignaturePrepared,
         )>
     {
-        let lhs: [_;1] = [(Self::public_key_minus_generator_prepared(),signature)];
+        let lhs: [_;1] = [(Self::minus_generator_of_public_key_group_prepared(),signature)];
         Self::final_exponentiation( Self::miller_loop(
             inputs.into_iter().map(|t| t).chain(&lhs)
 	) ).unwrap() == (PairingOutput::<Self::Engine>::zero()) //zero is the target_field::one !!
     }
     
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared() -> Self::PublicKeyPrepared;
+    fn minus_generator_of_public_key_group_prepared() -> Self::PublicKeyPrepared;
 
     /// Process the public key to be use in pairing. This has to be
     /// implemented by the type of BLS system implementing the engine
@@ -201,7 +201,6 @@ pub trait EngineBLS {
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Parameters> ;
 pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
-
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 // pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});
 
@@ -261,7 +260,7 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
     }
 
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared()
+    fn minus_generator_of_public_key_group_prepared()
      -> Self::PublicKeyPrepared
     {
         let g1_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::generator();
@@ -283,7 +282,7 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
 /// Yet, there are specific use cases where this variant performs
 /// better.  We swapy two group roles relative to zcash here.
 #[derive(Default)]
- pub struct TinyBLS<E: Pairing, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G1Parameters: WBParams, WBMap<<P as Bls12Parameters>::G1Parameters>: MapToCurve<<E as Pairing>::G1>;
+pub struct TinyBLS<E: Pairing, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G1Parameters: WBParams, WBMap<<P as Bls12Parameters>::G1Parameters>: MapToCurve<<E as Pairing>::G1>;
 
 impl<E: Pairing, P: Bls12Parameters> EngineBLS for TinyBLS<E, P> where <P as Bls12Parameters>::G1Parameters: WBParams, WBMap<<P as Bls12Parameters>::G1Parameters>: MapToCurve<<E as Pairing>::G1>
 {
@@ -332,16 +331,17 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for TinyBLS<E, P> where <P as Bls
     }
 
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared()
+    fn minus_generator_of_public_key_group_prepared()
      -> Self::PublicKeyPrepared
     {
         let g2_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::generator();
         <Self::PublicKeyGroup as Into<Self::PublicKeyPrepared>>::into(-g2_minus_generator.into_group())
     }
 
-        fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
+    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
 	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G1Parameters>>::new(&[1]).unwrap()
     }
 
 }
 
+pub type TinyBLS377 = TinyBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
