@@ -581,8 +581,8 @@ impl<E: EngineBLS> Keypair<E> {
     pub fn sign(&mut self, message: Message) -> Signature<E> {
         let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
 
-        let mut serialized_part1 : Vec<u8> = vec![];
-        let mut serialized_part2 : Vec<u8> = vec![]; 
+	let mut serialized_part1 = [0u8; 32];
+        let mut serialized_part2 = [0u8; 32]; 
         self.secret.key[0].serialize_compressed(&mut serialized_part1[..]).unwrap();
         self.secret.key[1].serialize_compressed(&mut serialized_part2[..]).unwrap();
         
