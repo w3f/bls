@@ -23,6 +23,8 @@
 //!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
 //!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
 
+use alloc::{vec, vec::Vec};
+
 use ark_ff::{UniformRand, Zero};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
        
@@ -39,7 +41,7 @@ use rand_chacha::ChaCha8Rng;
 
 use digest::{Digest};
 
-use std::iter::once;
+use core::iter::once;
 
 use super::*;
 // //////////////// SECRETS //////////////// //
@@ -643,7 +645,7 @@ impl<'a,E: EngineBLS> Signed for &'a SignedMessage<E> {
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         once((self.message.clone(), self.publickey))    // TODO:  Avoid clone
