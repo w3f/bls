@@ -43,6 +43,7 @@ use ark_ff::{Zero};
 
 use super::*;
 use super::verifiers::{verify_with_distinct_messages, verify_using_aggregated_auxiliary_public_keys};
+use super::single::DoublePublicKeyScheme;
 
 
 /// Batch or aggregate BLS signatures with attached messages and
@@ -82,6 +83,7 @@ use super::verifiers::{verify_with_distinct_messages, verify_using_aggregated_au
 //
 // TODO: Implement gaussian elimination verification scheme.
 
+//TODO: shouldn't this go to Schnoor module?
 pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
 
 use single::{PublicKey, PublicKeyInSignatureGroup};
@@ -192,7 +194,7 @@ mod tests {
     use ark_bls12_381::Bls12_381;
 
     use super::*;
-    
+
     #[test]
     fn verify_aggregate_single_message_single_signer() {
         let good = Message::new(b"ctx",b"test message");
@@ -304,44 +306,69 @@ mod tests {
         assert!(aggregated_sigs.verify() == false, "aggregated signature of a wrong message should not verify");
     }
 
-    fn generate_many_keypairs(num_of_keypairs: u32)-> Vec::<KeyPair::<TinyBLS377>> {
-        let mut keypairs : Vec::<KeyPair::<TinyBLS377>>  = vec![];
-        (0..num_of_keypairs).iter(map(|_| keypairs.add(KeyPair::<TinyBLS377>::generate(thread_rng()))));
+    fn generate_many_keypairs(num_of_keypairs: u32)-> Vec::<Keypair::<TinyBLS377>> {
+        let mut keypairs : Vec::<Keypair::<TinyBLS377>>  = (0..num_of_keypairs).map(|_| Keypair::<TinyBLS377>::generate(thread_rng())).collect();
         keypairs
         
     }
-    #[test]
-    fn test_1000_tiny_aggregate_and_verify_in_g2() {
 
-        let mut keypairs = generate_many_keypairs(1000);
+    use test::{Bencher, black_box};
+    #[bench]
+    fn only_generate_key_pairs(b: &mut Bencher) {
+        b.iter(|| {
+
+            let mut keypairs = generate_many_keypairs(100);
+        });
+    }
+    
+    #[bench]
+    fn test_100_tiny_aggregate_and_verify_in_g2(b: &mut Bencher) {
         let message = Message::new(b"ctx",b"test message");
-        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        let mut keypairs = generate_many_keypairs(100);
+        b.iter(|| {
+            let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
-        message.iter().keypairs.iter_mut().map(|(m,k)| aggregator.aggregate(k.signed_message(*m)));
+            for k in &mut keypairs {
+                aggregator.aggregate(&k.signed_message(message));
+            }
                                                  
-
-        aggregator.verify();
+            aggregator.verify();
+        });
     }
 
-    #[test]
-    fn test_1000_tiny_aggregate_only() {
-        let mut keypairs = generate_many_keypairs(1000);
+    #[bench]
+    fn test_100_tiny_aggregate_only_no_verify(b: &mut Bencher) {
+        let mut keypairs = generate_many_keypairs(100);
  
         let message = Message::new(b"ctx",b"test message");
-        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
-        message.iter().keypairs.iter_mut().map(|(m,k)| aggregator.aggregate(k.signed_message(*m)));
-                                                 
+        b.iter(|| {
+            let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+            for k in &mut keypairs {
+                aggregator.aggregate(&k.signed_message(message));
+            }
+        });
     }
 
-    #[test]
-    fn test_1000_tiny_aggregate_and_verify_g1() {
-        let mut keypairs : Vec::<KeyPair::<TinyBLS377>>  = vec![];
-
+    #[bench]
+    fn test_100_tiny_aggregate_and_verify_g1(b: &mut Bencher) {
+        let mut keypairs = generate_many_keypairs(100);
+ 
         let message = Message::new(b"ctx",b"test message");
-        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
-        message.iter().keypairs.iter_mut().map(|(m,k)| aggregator.aggregate(k.signed_message(*m)));
+        b.iter(|| {
+            let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+            for k in &mut keypairs {
+                aggregator.aggregate(&k.signed_message(message));
+            }
+
+            for k in &mut keypairs {
+                aggregator.add_auxiliary_public_key(&k.into_public_key_in_signature_group());
+            }
+
+            aggregator.verify_using_aggregated_auxiliary_public_keys();
+        });
                                                  
     }
 

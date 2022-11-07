@@ -13,6 +13,7 @@ use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
 use digest::Digest;
 use sha2::Sha256;
 use super::*;
+use super::pop::SchnorrProof;
 
 
 

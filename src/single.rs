@@ -105,7 +105,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 }
 
 
-trait DoublePublicKeyScheme<E: EngineBLS> {
+pub trait DoublePublicKeyScheme<E: EngineBLS> {
     fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E>;
 
 }
@@ -765,7 +765,8 @@ mod tests {
     use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
     
     use super::*;
-
+    use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+    
     use hex_literal::hex;
     use core::convert::TryInto;
     
@@ -900,6 +901,38 @@ mod tests {
     fn test_deserialize_random_value_as_secret_key_fails_for_bls377() {
         let random_seed  = hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
         test_deserialize_random_value_as_secret_key_fails::<Bls12_377, ark_bls12_377::Parameters>(random_seed.as_slice());
+    }
+
+    use test::{Bencher, black_box};
+    #[bench]
+    fn test_bls_verify_many_signatures_simple(b: &mut Bencher) {
+        let good = Message::new(b"ctx",b"test message");
+
+        let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
+        let message = Message::new(b"ctx",b"test message");
+
+        let sig = keypair.signed_message(message);
+
+        for i in 1..1 {
+            println!("{}",i);
+            b.iter(||sig.verify())
+        }
+        //(1..1000000).map(|i| {println!("{}",i); b.iter(||sig.verify())});
+                                                           
+    }
+
+    #[bench]
+    fn test_bls_verify_many_signatures_schnorr(b: &mut Bencher) {
+        let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
+        let message = Message::new(b"ctx",b"test message");
+
+        let sig = <Keypair<TinyBLS377> as ProofOfPossessionGenerator<TinyBLS377, Sha256>>::generate_pok(&keypair, message);
+        let public_key = keypair.public;
+
+        for i in 1..1 {
+            b.iter(||<PublicKey<TinyBLS377> as ProofOfPossessionVerifier<TinyBLS377, Sha256>>::verify_pok(&public_key, message,sig));
+
+        }
     }
 
 }

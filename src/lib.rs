@@ -81,6 +81,7 @@
 //!
 
 
+#![feature(test)]
 #[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
@@ -88,6 +89,7 @@ pub struct ReadmeDoctests;
 #[macro_use]
 extern crate arrayref;
 
+extern crate  test;
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
@@ -112,6 +114,7 @@ pub mod bit;
 pub mod delinear;
 pub mod verifiers;
 pub mod schnorr_pop;
+pub mod chaum_pederson_signature;
 
 pub use engine::*;
 
