@@ -19,6 +19,7 @@
 use std::borrow::{Borrow};
 use std::ops::{MulAssign};
 
+use ark_serialize::CanonicalSerialize;
 use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_ec::{AffineRepr, CurveGroup, pairing::{Pairing, PairingOutput, MillerLoopOutput}};
 use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve}};
@@ -195,6 +196,22 @@ pub trait EngineBLS {
 	    let g_affine: Self::SignatureGroupAffine = g.into();
         Self::SignaturePrepared::from(g_affine)
     }
+
+    /// Serialization helper for various sigma protocols
+    fn signature_point_to_byte(point: &Self::SignatureGroup) -> Vec<u8> {
+	let mut point_as_bytes = vec![0;  Self::SIGNATURE_SERIALIZED_SIZE];
+	let point_affine = point.into_affine();
+	point_affine.serialize_compressed(&mut point_as_bytes[..]).unwrap();
+	point_as_bytes
+    }    
+	
+
+    fn public_key_point_to_byte(point: &Self::PublicKeyGroup) -> Vec<u8> {
+	let mut point_as_bytes = vec![0;  Self::PUBLICKEY_SERIALIZED_SIZE];
+	let point_affine = point.into_affine();
+	point_affine.serialize_compressed(&mut point_as_bytes[..]).unwrap();
+	point_as_bytes
+    }    
 
 }
 

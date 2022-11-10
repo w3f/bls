@@ -43,8 +43,6 @@ use ark_ff::{Zero};
 
 use super::*;
 use super::verifiers::{verify_with_distinct_messages, verify_using_aggregated_auxiliary_public_keys};
-use super::single::DoublePublicKeyScheme;
-
 
 /// Batch or aggregate BLS signatures with attached messages and
 /// signers, for whom we previously checked proofs-of-possession.
@@ -90,14 +88,14 @@ use single::{PublicKey, PublicKeyInSignatureGroup};
 /// ProofOfPossion trait which should be implemented by secret
 pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
     /// The proof of possession generator is supposed to
-    /// to produce a schnoor signature of the message using
+    /// to produce a schnoor signature of the publickey using
     /// the secret key which it claim to possess.
-    fn generate_pok(&self, message: Message) -> SchnorrProof<E>;
+    fn generate_pok(&self) -> SchnorrProof<E>;
 }
 
 /// This should be implemented by public key
 pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
-    fn verify_pok(&self, message: Message, schnorr_proof: SchnorrProof<E>) -> bool;
+    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
 }
 
 #[derive(Clone)]
@@ -194,7 +192,8 @@ mod tests {
     use ark_bls12_381::Bls12_381;
 
     use super::*;
-
+    use crate::single::DoublePublicKeyScheme;
+    
     #[test]
     fn verify_aggregate_single_message_single_signer() {
         let good = Message::new(b"ctx",b"test message");
@@ -306,25 +305,27 @@ mod tests {
         assert!(aggregated_sigs.verify() == false, "aggregated signature of a wrong message should not verify");
     }
 
-    fn generate_many_keypairs(num_of_keypairs: u32)-> Vec::<Keypair::<TinyBLS377>> {
+    fn generate_many_keypairs(num_of_keypairs: usize)-> Vec::<Keypair::<TinyBLS377>> {
         let mut keypairs : Vec::<Keypair::<TinyBLS377>>  = (0..num_of_keypairs).map(|_| Keypair::<TinyBLS377>::generate(thread_rng())).collect();
         keypairs
         
     }
 
+    const NO_OF_MULTI_SIG_SIGNERS : usize = 100;
     use test::{Bencher, black_box};
+
     #[bench]
     fn only_generate_key_pairs(b: &mut Bencher) {
         b.iter(|| {
 
-            let mut keypairs = generate_many_keypairs(100);
+            let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
         });
     }
     
     #[bench]
-    fn test_100_tiny_aggregate_and_verify_in_g2(b: &mut Bencher) {
+    fn test_many_tiny_aggregate_and_verify_in_g2(b: &mut Bencher) {
         let message = Message::new(b"ctx",b"test message");
-        let mut keypairs = generate_many_keypairs(100);
+        let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
         b.iter(|| {
             let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
@@ -337,8 +338,8 @@ mod tests {
     }
 
     #[bench]
-    fn test_100_tiny_aggregate_only_no_verify(b: &mut Bencher) {
-        let mut keypairs = generate_many_keypairs(100);
+    fn test_many_tiny_aggregate_only_no_verify(b: &mut Bencher) {
+        let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
  
         let message = Message::new(b"ctx",b"test message");
 
@@ -352,8 +353,8 @@ mod tests {
     }
 
     #[bench]
-    fn test_100_tiny_aggregate_and_verify_g1(b: &mut Bencher) {
-        let mut keypairs = generate_many_keypairs(100);
+    fn test_many_tiny_aggregate_and_verify_g1(b: &mut Bencher) {
+        let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
  
         let message = Message::new(b"ctx",b"test message");
 

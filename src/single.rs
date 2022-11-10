@@ -412,20 +412,22 @@ impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
 
 // Note that ark_ff::bytes::ToBytes for projective points export them without converting them to affine
 // and so they might leak information about the secret key.
-pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
+pub trait SerializableToBytes:
     CanonicalSerialize +
     CanonicalDeserialize 
 {
-    fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
-        let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
+    const SERIALIZED_BYTES_SIZE : usize;
+	
+    fn to_bytes(&self) -> Vec<u8>  {
+        let mut serialized_representation : Vec<u8> = vec![0; Self::SERIALIZED_BYTES_SIZE];
         self.serialize_compressed(&mut serialized_representation[..]).unwrap();
 
         return serialized_representation;
 
      }
 
-    fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
-        Self::deserialize_compressed(bytes.as_slice())
+    fn from_bytes(bytes: &[u8]) -> Result<Self,SerializationError>  {
+        Self::deserialize_compressed(bytes)
      }
  }
 
@@ -433,9 +435,9 @@ pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
 //      constant size array so it can be implemented as follows
 // impl <E: EngineBLS> SerializableToBytes<{ E::SIGNATURE_SERIALIZED_SIZE }> for Signature<E> {}
 // impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
-impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
-impl <E: EngineBLS> SerializableToBytes<96> for PublicKey<E>  {}
-impl <E: EngineBLS> SerializableToBytes<32> for SecretKey<E>  {}
+impl <E: EngineBLS> SerializableToBytes for Signature<E> {const SERIALIZED_BYTES_SIZE : usize = E::SIGNATURE_SERIALIZED_SIZE;}
+impl <E: EngineBLS> SerializableToBytes for PublicKey<E>  {const SERIALIZED_BYTES_SIZE : usize  = E::PUBLICKEY_SERIALIZED_SIZE;}
+impl <E: EngineBLS> SerializableToBytes for SecretKey<E>  {const SERIALIZED_BYTES_SIZE : usize = E::SECRET_KEY_SIZE;}
 
 /// because SecretKey is not canonically serializable and that we need to convert
 /// it to vartime first we need to manually re-implement this trait for secret keys
@@ -766,6 +768,7 @@ mod tests {
     
     use super::*;
     use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+    use crate::chaum_pederson_signature::{ChaumPedersonSigner, ChaumPedersonVerifier};
     
     use hex_literal::hex;
     use core::convert::TryInto;
@@ -903,6 +906,7 @@ mod tests {
         test_deserialize_random_value_as_secret_key_fails::<Bls12_377, ark_bls12_377::Parameters>(random_seed.as_slice());
     }
 
+    const NO_OF_MULTI_SIG_SIGNERS : usize = 100;
     use test::{Bencher, black_box};
     #[bench]
     fn test_bls_verify_many_signatures_simple(b: &mut Bencher) {
@@ -913,26 +917,49 @@ mod tests {
 
         let sig = keypair.signed_message(message);
 
-        for i in 1..1 {
+        for i in 1..NO_OF_MULTI_SIG_SIGNERS {
             println!("{}",i);
             b.iter(||sig.verify())
-        }
-        //(1..1000000).map(|i| {println!("{}",i); b.iter(||sig.verify())});
-                                                           
+        }                                                           
     }
 
     #[bench]
-    fn test_bls_verify_many_signatures_schnorr(b: &mut Bencher) {
+    fn test_bls_verify_many_signatures_chaum_pederson(b: &mut Bencher) {
         let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
         let message = Message::new(b"ctx",b"test message");
 
-        let sig = <Keypair<TinyBLS377> as ProofOfPossessionGenerator<TinyBLS377, Sha256>>::generate_pok(&keypair, message);
-        let public_key = keypair.public;
+        let sig = <Keypair<TinyBLS377> as ChaumPedersonSigner<TinyBLS377, Sha256>>::generate_cp_signature(&mut keypair, message);
+        let public_key_in_sig_group = keypair.into_public_key_in_signature_group();
 
-        for i in 1..1 {
-            b.iter(||<PublicKey<TinyBLS377> as ProofOfPossessionVerifier<TinyBLS377, Sha256>>::verify_pok(&public_key, message,sig));
-
+        for i in 1..NO_OF_MULTI_SIG_SIGNERS {
+            b.iter(||<PublicKeyInSignatureGroup<TinyBLS377> as ChaumPedersonVerifier<TinyBLS377, Sha256>>::verify_cp_signature(&public_key_in_sig_group, message,sig));
         }
+    }
+
+    #[bench]
+    fn test_pairing(b: &mut Bencher) {
+        let mut keypair1 = Keypair::<TinyBLS377>::generate(thread_rng());
+
+	let point_1 = keypair1.into_public_key_in_signature_group().0;
+	let point_2 = keypair1.public.0;
+	    
+	for i in 1..NO_OF_MULTI_SIG_SIGNERS {
+            b.iter(||TinyBLS377::pairing(point_2, point_1));
+        }
+
+    }
+    #[bench]
+    fn test_scalar_multiplication(b: &mut Bencher) {
+        let mut keypair1 = Keypair::<TinyBLS377>::generate(thread_rng());
+
+	let point_1 = keypair1.into_public_key_in_signature_group().0;
+	let point_2 = keypair1.public.0;
+	let scalar = keypair1.secret.into_vartime().0;
+	    
+	for i in 1..NO_OF_MULTI_SIG_SIGNERS {
+            b.iter(||point_1 * scalar);
+        }
+
     }
 
 }

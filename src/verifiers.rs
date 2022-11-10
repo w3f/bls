@@ -13,9 +13,6 @@ use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
 use digest::Digest;
 use sha2::Sha256;
 use super::*;
-use super::pop::SchnorrProof;
-
-
 
 // We define these convenience type alias here instead of engine.rs 
 // because seemingly only verifier implementations really employ them.
@@ -78,7 +75,6 @@ pub fn verify_simple<S: Signed>(s: S) -> bool {
         .collect::<Vec<(_,_)>>();
     S::E::verify_prepared( signature, prepared.iter())
 }
-
 
 /// BLS signature verification optimized for all unique messages
 ///
@@ -179,7 +175,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(signed: &pop:
     let itr = signed.messages_and_publickeys();
     let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
     let (first_message, first_public_key) =
-        match (signed.messages_and_publickeys().next()) {
+        match signed.messages_and_publickeys().next() {
             Some((first_message, first_public_key)) => (first_message, first_public_key),
             None => return false,
         };

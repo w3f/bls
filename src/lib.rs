@@ -198,8 +198,7 @@ pub trait Signed: Sized {
     /// to be normalized, but this should usually be replaced by more
     /// optimized variants. 
     fn verify(self) -> bool {
-        // verifiers::verify_simple(self)
-	    true
+        verifiers::verify_simple(self)
     }
 }
 
