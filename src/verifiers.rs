@@ -194,6 +194,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(signed: &pop:
 
     // deterministic randomness for adding aggregated auxiliary pub keys
     //TODO you can't just assume that there is one pubickey you need to stop if they were more or aggregate them
+
     let pseudo_random_scalar_seed : [u8; 32] = Sha256::new().chain_update(signature_as_bytes).chain_update(first_public_key_as_bytes).chain_update(aggregated_aux_pub_key_as_bytes).finalize().into();
     let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
     let pseudo_random_scalar : E::Scalar = hasher.hash_to_field(&pseudo_random_scalar_seed[..],1)[0];

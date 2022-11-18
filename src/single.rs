@@ -623,7 +623,7 @@ impl<E: EngineBLS> Keypair<E> {
 
         self.sign_with_rng::<StdRng>(message, SeedableRng::from_seed(seed))
     }
-
+  
     #[cfg(feature = "std")]
     /// Sign a message creating a `Signature` using the default `ThreadRng`.
     pub fn sign_thread_rng(&mut self, message: Message) -> Signature<E> {
@@ -906,7 +906,7 @@ mod tests {
         test_deserialize_random_value_as_secret_key_fails::<Bls12_377, ark_bls12_377::Parameters>(random_seed.as_slice());
     }
 
-    const NO_OF_MULTI_SIG_SIGNERS : usize = 100;
+    const NO_OF_MULTI_SIG_SIGNERS : usize = 1000;
     use test::{Bencher, black_box};
     #[bench]
     fn test_bls_verify_many_signatures_simple(b: &mut Bencher) {
@@ -917,10 +917,10 @@ mod tests {
 
         let sig = keypair.signed_message(message);
 
+	b.iter(||
         for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-            println!("{}",i);
-            b.iter(||sig.verify())
-        }                                                           
+            sig.verify();
+        });                                            
     }
 
     #[bench]
@@ -931,9 +931,10 @@ mod tests {
         let sig = <Keypair<TinyBLS377> as ChaumPedersonSigner<TinyBLS377, Sha256>>::generate_cp_signature(&mut keypair, message);
         let public_key_in_sig_group = keypair.into_public_key_in_signature_group();
 
-        for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-            b.iter(||<PublicKeyInSignatureGroup<TinyBLS377> as ChaumPedersonVerifier<TinyBLS377, Sha256>>::verify_cp_signature(&public_key_in_sig_group, message,sig));
-        }
+	b.iter(||
+               for i in 1..NO_OF_MULTI_SIG_SIGNERS {
+		   assert!(<PublicKeyInSignatureGroup<TinyBLS377> as ChaumPedersonVerifier<TinyBLS377, Sha256>>::verify_cp_signature(&public_key_in_sig_group, message,sig));
+        });
     }
 
     #[bench]
@@ -942,10 +943,11 @@ mod tests {
 
 	let point_1 = keypair1.into_public_key_in_signature_group().0;
 	let point_2 = keypair1.public.0;
-	    
-	for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-            b.iter(||TinyBLS377::pairing(point_2, point_1));
-        }
+
+	b.iter(||
+	for i in 0..NO_OF_MULTI_SIG_SIGNERS {
+            TinyBLS377::pairing(point_2, point_1);
+        });
 
     }
     #[bench]
@@ -955,10 +957,11 @@ mod tests {
 	let point_1 = keypair1.into_public_key_in_signature_group().0;
 	let point_2 = keypair1.public.0;
 	let scalar = keypair1.secret.into_vartime().0;
-	    
-	for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-            b.iter(||point_1 * scalar);
-        }
+
+	b.iter(||
+	       for i in 0..NO_OF_MULTI_SIG_SIGNERS {
+		   point_1 * scalar;
+               });
 
     }
 
