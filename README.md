@@ -79,6 +79,10 @@ assert!(batch_poped.verify())
 
 If you lack proofs-of-possesion, then delinearized approaches are provided in the `delinear` module, but such schemes might require a more customised approach.
 
+### Efficient Aggregatable BLS Signatures with Chaum-Pedersen Proofs
+
+The scheme introduced in [`ChaumPedersenPoPs.pdf`](./doc/ChaumPedersenPoPs.pdf) is implemented in [`chaum_pederson_signature.rs`](src/chaum_pederson_signature.rs) using `ChaumPedersonSigner` and `ChaumPedersonVerifier` traits and in [`pop.rs`](src/pop.rs) using `add_auxiliary_public_key` and `verify_using_aggregated_auxiliary_public_keys` functions. See benchmark tests for more how to use this scheme.
+
 ### Hash to Curve
 
 In order to sign a message, the library needs to hash the message as a point on the signature curve. While `BLSEngine` trait is agnostic about `MapToSignatureCurve` method, our implementation of BLS12-381 (`ZBLS`) and BLS12-377(`BLS377`) specifically uses Wahby and Boneh hash to curve method described in Section of 6.6.3 of https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/ .
