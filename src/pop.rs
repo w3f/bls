@@ -36,7 +36,7 @@
 
 use digest::Digest;
 
-use std::borrow::{Borrow}; // BorrowMut
+use core::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
 use ark_ff::{Zero};

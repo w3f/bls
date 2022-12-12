@@ -3,14 +3,16 @@
 //!
 //! 
 
-use std::borrow::Borrow;
+use core::borrow::Borrow;
+#[cfg(feature = "std")]
 use std::collections::HashMap;
 
 use ark_ec::CurveGroup;
 use ark_serialize::{CanonicalSerialize};
 
-use super::*;
+use alloc::{vec, vec::Vec};
 
+use super::*;
 
 // We define these convenience type alias here instead of engine.rs 
 // because seemingly only verifier implementations really employ them.
@@ -87,6 +89,7 @@ pub fn verify_simple<S: Signed>(s: S) -> bool {
 /// We optionally batch normalize the public keys in the event that
 /// they are provided by algerbaic operaations, but this sounds
 /// unlikely given our requirement that messages be distinct.
+#[cfg(feature = "std")]
 pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys: bool) -> bool {
     let signature = signed.signature().0;
     // We first hash the messages to the signature curve and
@@ -154,8 +157,6 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 }
 
 /*
-
-
 /// Excessively optimized BLS signature verification
 ///
 /// We minimize the number of pairing operations by doing two

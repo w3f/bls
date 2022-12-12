@@ -16,8 +16,10 @@
 //! but still with their affine, projective, and compressed forms,
 //! and batch normalization. 
 
-use std::borrow::{Borrow};
-use std::ops::{MulAssign};
+use core::borrow::{Borrow};
+use core::ops::{MulAssign};
+
+use alloc::{vec, vec::Vec};
 
 use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_ec::{AffineRepr, CurveGroup, pairing::{Pairing, PairingOutput, MillerLoopOutput}};
@@ -27,7 +29,7 @@ use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
 use rand::{Rng};
 use rand_core::RngCore;
 
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use sha2::Sha256; //IETF standard asks for SHA256
 
