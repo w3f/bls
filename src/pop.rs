@@ -311,16 +311,16 @@ mod tests {
         
     }
 
-    const NO_OF_MULTI_SIG_SIGNERS : usize = 1000;
+    const NO_OF_MULTI_SIG_SIGNERS : usize = 10000;
     use test::{Bencher, black_box};
 
-    #[bench]
-    fn only_generate_key_pairs(b: &mut Bencher) {
-        b.iter(|| {
+    // #[bench]
+    // fn only_generate_key_pairs(b: &mut Bencher) {
+    //     b.iter(|| {
 
-            let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
-        });
-    }
+    //         let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
+    //     });
+    // }
     
     #[bench]
     fn test_many_tiny_aggregate_and_verify_in_g2(b: &mut Bencher) {
@@ -352,24 +352,24 @@ mod tests {
         });
     }
 
-    #[bench]
-    fn test_many_tiny_aggregate_only_no_verify(b: &mut Bencher) {
-        let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
-	let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
-        let message = Message::new(b"ctx",b"test message");
+    // #[bench]
+    // fn test_many_tiny_aggregate_only_no_verify(b: &mut Bencher) {
+    //     let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
+    // 	let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
+    //     let message = Message::new(b"ctx",b"test message");
 
-        b.iter(|| {
-            let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-	    let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
+    //     b.iter(|| {
+    //         let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+    // 	    let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
 
-            for k in &mut keypairs {
-                aggregator.aggregate(&k.signed_message(message));
-		aggregated_public_key.0 += k.public.0;
+    //         for k in &mut keypairs {
+    //             aggregator.aggregate(&k.signed_message(message));
+    // 		aggregated_public_key.0 += k.public.0;
 		
 		
-            }
-        });
-    }
+    //         }
+    //     });
+    // }
 
     #[bench]
     fn test_many_tiny_aggregate_and_verify_in_g1(b: &mut Bencher) {

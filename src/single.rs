@@ -908,7 +908,7 @@ mod tests {
 
     const NO_OF_MULTI_SIG_SIGNERS : usize = 1000;
     use test::{Bencher, black_box};
-    #[bench]
+    //#[bench]
     fn test_bls_verify_many_signatures_simple(b: &mut Bencher) {
         let good = Message::new(b"ctx",b"test message");
 
@@ -923,7 +923,7 @@ mod tests {
         });                                            
     }
 
-    #[bench]
+    //#[bench]
     fn test_bls_verify_many_signatures_chaum_pederson(b: &mut Bencher) {
         let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
         let message = Message::new(b"ctx",b"test message");
@@ -937,7 +937,7 @@ mod tests {
         });
     }
 
-    #[bench]
+    //#[bench]
     fn test_pairing(b: &mut Bencher) {
         let mut keypair1 = Keypair::<TinyBLS377>::generate(thread_rng());
 
@@ -950,7 +950,7 @@ mod tests {
         });
 
     }
-    #[bench]
+    //#[bench]
     fn test_scalar_multiplication(b: &mut Bencher) {
         let mut keypair1 = Keypair::<TinyBLS377>::generate(thread_rng());
 
