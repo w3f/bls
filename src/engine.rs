@@ -277,60 +277,73 @@ impl<E: Pairing, P: Bls12Config> EngineBLS for UsualBLS<E,P> where <P as Bls12Co
 }
 
 
-// /// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
-// ///
-// /// We recommend gainst this variant by default because verifiers
-// /// always perform `O(signers)` additions on the `PublicKeyGroup`,
-// /// or worse 128 bit scalar multiplications with delinearization. 
-// /// Yet, there are specific use cases where this variant performs
-// /// better.  We swapy two group roles relative to zcash here.
-// #[derive(Default)]
-// pub struct TinyBLS<E: PairingEngine>(pub E);
+/// Infrequently used BLS variant with tiny 48 byte signatures and 96 byte public keys,
+///
+/// We recommend gainst this variant by default because verifiers
+/// always perform `O(signers)` additions on the `PublicKeyGroup`,
+/// or worse 128 bit scalar multiplications with delinearization. 
+/// Yet, there are specific use cases where this variant performs
+/// better.  We swapy two group roles relative to zcash here.
+#[derive(Default)]
+ pub struct TinyBLS<E: Pairing, P: Bls12Config>(pub E, PhantomData<fn() -> P>) where <P as Bls12Config>::G1Config: WBConfig, WBMap<<P as Bls12Config>::G1Config>: MapToCurve<<E as Pairing>::G1>;
 
-// impl<E: PairingEngine> EngineBLS for TinyBLS<E> {
-//     type Engine = E;
-//     type Scalar = <Self::Engine as PairingEngine>::Fr;
+impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P> where <P as Bls12Config>::G1Config: WBConfig, WBMap<<P as Bls12Config>::G1Config>: MapToCurve<<E as Pairing>::G1>
+{
+    type Engine = E;
+    type Scalar = <Self::Engine as Pairing>::ScalarField;
 
-//     type SignatureGroup = E::G1Projective;
-//     type SignatureGroupAffine = E::G1Affine;
-//     type SignaturePrepared = E::G1Prepared;
-//     type SignatureGroupBaseField = <Self::Engine as PairingEngine>::Fq;
+    type SignatureGroup = E::G1;
+    type SignatureGroupAffine = E::G1Affine;
+    type SignaturePrepared = E::G1Prepared;
+    type SignatureGroupBaseField = <<E as Pairing>::G1 as CurveGroup>::BaseField;
 
-//     type PublicKeyGroup = E::G2Projective;
-//     type PublicKeyGroupAffine = E::G2Affine;
-//     type PublicKeyPrepared = E::G2Prepared;
-//     type PublicKeyGroupBaseField = <Self::Engine as PairingEngine>::Fqe;
+    const SIGNATURE_SERIALIZED_SIZE : usize = 48;
 
-//     fn miller_loop<'a,I>(i: I) -> E::Fqk
-//     where
-//         I: IntoIterator<Item = &'a(
-//             Self::PublicKeyPrepared,
-//             Self::SignaturePrepared,
-//         )>,
-//     {
-//         // We require an ugly unecessary allocation here because
-//         // zcash's pairing library cnsumes an iterator of references
-//         // to tuples of references, which always requires 
-//         let i = i.into_iter().map(|(x,y)| (y.clone(),x.clone()))
-//               .collect::<Vec<(Self::SignaturePrepared, Self::PublicKeyPrepared)>>();
-//         E::miller_loop(&i)
-//     }
+    type PublicKeyGroup = E::G2;
+    type PublicKeyGroupAffine = E::G2Affine;
+    type PublicKeyPrepared = E::G2Prepared;
+    type PublicKeyGroupBaseField = <<E as Pairing>::G2 as CurveGroup>::BaseField;
 
-//     fn pairing<G2,G1>(p: G2, q: G1) -> E::Fqk
-//     where
-//         G1: Into<E::G1Affine>,
-//         G2: Into<E::G2Affine>,
-//     {
-//         E::pairing(q,p)
-//     }
+    const PUBLICKEY_SERIALIZED_SIZE : usize = 96;
+    const SECRET_KEY_SIZE : usize = 32;
 
-//     /// Prepared negative of the generator of the public key curve.
-//     fn public_key_minus_generator_prepared()
-//      -> Self::PublicKeyPrepared
-//     {
-//         let g2_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::prime_subgroup_generator();
-//         (-g2_minus_generator).into()
-//     }
+    type HashToSignatureField = DefaultFieldHasher<Sha256, 128>;
+    type MapToSignatureCurve = WBMap<P::G1Config>;
 
-// }
+    fn miller_loop<'a,I>(i: I) -> MillerLoopOutput<E>
+    where
+        I: IntoIterator<Item = &'a(
+            Self::PublicKeyPrepared,
+            Self::SignaturePrepared,
+        )>,
+    {
+        // We require an ugly unecessary allocation here because
+        // zcash's pairing library cnsumes an iterator of references
+        // to tuples of references, which always requires 
+        let (i_a, i_b) : (Vec<Self::PublicKeyPrepared>, Vec<Self::SignaturePrepared>) = i.into_iter().cloned().unzip();
+
+        E::multi_miller_loop(i_b, i_a) //in Tiny BLS signature is in G1
+    }
+
+    fn pairing<G2,G1>(p: G2, q: G1) -> E::TargetField
+    where
+        G1: Into<E::G1Affine>,
+        G2: Into<E::G2Affine>,
+    {
+        E::pairing(q.into(),p.into()).0
+    }
+
+    /// Prepared negative of the generator of the public key curve.
+    fn public_key_minus_generator_prepared()
+     -> Self::PublicKeyPrepared
+    {
+        let g2_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::generator();
+        <Self::PublicKeyGroup as Into<Self::PublicKeyPrepared>>::into(-g2_minus_generator.into_group())
+    }
+
+        fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
+	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G1Config>>::new(&[1]).unwrap()
+    }
+
+}
 
