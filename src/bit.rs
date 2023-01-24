@@ -142,7 +142,7 @@ impl ::core::fmt::Display for SignerTableError {
     }
 }
 
-impl ::core::error::Error for SignerTableError {
+impl ::std::error::Error for SignerTableError {
     fn description(&self) -> &str {
         use self::SignerTableError::*;
         match self {
