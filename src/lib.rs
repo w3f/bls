@@ -80,9 +80,10 @@
 //! 
 //!
 
-
-#![feature(associated_type_defaults)]
-#![feature(array_methods)]
+#![cfg_attr(not(feature = "std"), no_std)]
+#[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
+#[cfg(doctest)]
+pub struct ReadmeDoctests;
 
 #[macro_use]
 extern crate arrayref;
@@ -98,25 +99,32 @@ extern crate rand_chacha;
 extern crate sha3;
 extern crate digest;
 
+extern crate alloc;
+
 #[cfg(feature = "serde")]
 extern crate serde;
 
-use std::borrow::Borrow;
+use core::borrow::Borrow;
 
 pub mod engine;
 pub mod single;
+#[cfg(feature = "std")]
 pub mod distinct;
+#[cfg(feature = "std")]
 pub mod pop;
+#[cfg(feature = "std")]
 pub mod bit;
+#[cfg(feature = "std")]
 pub mod delinear;
 pub mod verifiers;
-// pub mod delinear;
-pub mod bls_pop;
+#[cfg(feature = "std")]
+pub mod schnorr_pop;
 
 pub use engine::*;
 
-pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature};
-// pub use bit::{BitSignedMessage,CountSignedMessage};
+pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage, SerializableToBytes};
+#[cfg(feature = "std")]
+pub use bit::{BitSignedMessage,CountSignedMessage};
 
 
 /// Internal message hash size.  
@@ -132,16 +140,16 @@ pub struct Message(pub [u8; MESSAGE_SIZE]);
 
 impl Message {
     pub fn new(context: &'static [u8], message: &[u8]) -> Message {
-        use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+        use sha3::{Shake128, digest::{Update, ExtendableOutput, XofReader}};
         let mut h = Shake128::default();
-        h.input(context);
+        h.update(context);
         let l = message.len() as u64;
-        h.input(l.to_le_bytes());
-        h.input(message);
+        h.update(&l.to_le_bytes());
+        h.update(message);
         // let mut t = ::merlin::Transcript::new(context);
         // t.append_message(b"", message);
         let mut msg = [0u8; MESSAGE_SIZE];
-        h.xof_result().read(&mut msg[..]);
+        h.finalize_xof().read(&mut msg[..]);
         // t.challenge_bytes(b"", &mut msg);
         Message(msg)
     }

@@ -4,11 +4,11 @@
 //! discuraged proof-of-possession flavors of aggregation.
 
 
-use std::borrow::{Borrow,BorrowMut};
-use std::iter::{once};
+use core::borrow::{Borrow,BorrowMut};
+use core::iter::{once};
 
 use ark_ff::{Zero};
-use ark_ec::ProjectiveCurve;
+use ark_ec::{Group};
 
 use super::*;
 use super::single::SignedMessage;
@@ -19,7 +19,7 @@ use super::verifiers::verify_with_distinct_messages;
 // std does not expose `slice::BytewiseEquality`
 fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
     if x.len() != y.len() { return false; }
-    if ::std::ptr::eq(x,y) { return true; }
+    if ::core::ptr::eq(x,y) { return true; }
     x == y
 }
 
@@ -83,7 +83,7 @@ where E: EngineBLS, ST: SignerTable<E>
 impl<E,V> SignerTable<E> for V
 where
     E: EngineBLS,
-    V: ::std::ops::Deref<Target=[PublicKey<E>]>
+    V: ::core::ops::Deref<Target=[PublicKey<E>]>
 {
     fn agreement(&self, other: &Self) -> bool {
         slice_eq_bytewise(self.deref(),other.deref())
@@ -124,15 +124,15 @@ pub enum SignerTableError {
     /// Attempted to use missmatched proof-of-possession tables. 
     BadSignerTable(&'static str),
     /// Attempted to aggregate distint messages, which requires the 
-    /// the more general BatchAssumingProofsOfPossession type instead.
+    /// the more general SignatureAggregatorAssumingPoP type instead.
     MismatchedMessage,
     /// Aggregation is impossible due to signers being repeated or
     /// repeated too many times in both sets or multi-sets, respectively.
     RepeatedSigners,
 }
 
-impl ::std::fmt::Display for SignerTableError {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+impl ::core::fmt::Display for SignerTableError {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
         use self::SignerTableError::*;
         match self {
             BadSignerTable(s) => write!(f, "{}", s),
@@ -197,7 +197,7 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
@@ -334,7 +334,7 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
@@ -522,7 +522,7 @@ where
 }
 
 
-#[cfg(test)]
+#[cfg(all(test, feature="std"))]
 mod tests {
     use rand::{thread_rng};  // Rng
 
@@ -538,7 +538,7 @@ mod tests {
         let pop = keypairs.iter().map(|k| k.public).collect::<Vec<_>>();
         let dup = keypairs[3].clone();
         keypairs.push(dup);
-        let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
+        let sigs1 = keypairs.iter_mut().map(|k| k.signed_message(msg1)).collect::<Vec<_>>();
 
         let mut bitsig1 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg1);
         assert!( bitsig1.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
@@ -558,14 +558,14 @@ mod tests {
         assert!( verifiers::verify_with_distinct_messages(&bitsig1,false) );
         // assert!( verifiers::verify_with_gaussian_elimination(&dms) );
 
-        let sigs2 = keypairs.iter_mut().map(|k| k.sign(msg2)).collect::<Vec<_>>();  
+        let sigs2 = keypairs.iter_mut().map(|k| k.signed_message(msg2)).collect::<Vec<_>>();  
         let mut bitsig2 = BitSignedMessage::<ZBLS,_>::new(pop.clone(),msg2);
         for sig in sigs2.iter().take(3) {
             assert!( bitsig2.add(sig).is_ok() );
         }
         assert!( bitsig1.merge(&bitsig2).is_err() );
 
-        let mut multimsg = pop::BatchAssumingProofsOfPossession::<ZBLS>::new();
+        let mut multimsg = pop::SignatureAggregatorAssumingPoP::<ZBLS>::new();
         multimsg.aggregate(&bitsig1);
         multimsg.aggregate(&bitsig2);
         assert!( multimsg.verify() );  // verifiers::verify_with_distinct_messages(&dms,true)
@@ -573,7 +573,7 @@ mod tests {
         assert!( verifiers::verify_simple(&multimsg) );
         assert!( verifiers::verify_with_distinct_messages(&multimsg,false) );
 
-        let oops = Keypair::<ZBLS>::generate(thread_rng()).sign(msg2);
+        let oops = Keypair::<ZBLS>::generate(thread_rng()).signed_message(msg2);
         assert!( bitsig1.add_points(oops.publickey,oops.signature).is_err() );
         /*
         TODO: Test that adding signers for an incorrect message fails, but this version angers teh borrow checker.

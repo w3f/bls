@@ -15,10 +15,11 @@
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::CanonicalSerialize;
 use ark_ff::BigInteger;
-use ark_ec::ProjectiveCurve;
-
-use rand::{Rng, thread_rng};
-use sha3::{Shake128, digest::{Input,ExtendableOutput,XofReader}};
+use ark_ec::CurveGroup;
+#[cfg(feature = "std")]
+use rand::thread_rng;
+use rand::{Rng};
+use sha3::{Shake128, digest::{Update, ExtendableOutput, XofReader}};
 
 use std::collections::HashMap;
 
@@ -81,16 +82,18 @@ impl<E: EngineBLS> Delinearized<E> {
     }
     pub fn new_keyed(key: &[u8]) -> Delinearized<E> {
         let mut t = Shake128::default();
-        t.input(b"Delinearised BLS with key:");
+        t.update(b"Delinearised BLS with key:");
         let l = key.len() as u64;
-        t.input(l.to_le_bytes());
-        t.input(key);
+        t.update(&l.to_le_bytes());
+        t.update(key);
         Delinearized::new(t)
     }
     pub fn new_batched_rng<R: Rng>(mut rng: R) -> Delinearized<E> {
         let r = rng.gen::<[u8; 32]>();
         Delinearized::new_keyed(&r[..])
     }
+
+    #[cfg(feature = "std")]
     pub fn new_batched() -> Delinearized<E> {
         Delinearized::new_batched_rng(thread_rng())
     }
@@ -105,15 +108,15 @@ impl<E: EngineBLS> Delinearized<E> {
         let pk_affine = publickey.0.into_affine();
         let mut pk_uncompressed = vec![0;  pk_affine.uncompressed_size()];        
         pk_affine.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
-        t.input(pk_uncompressed);
+        t.update(&pk_uncompressed);
         let mut b = [0u8; 16];
-        t.xof_result().read(&mut b[..]);
+        t.finalize_xof().read(&mut b[..]);
         let (x,y) = array_refs!(&b,8,8);
         let mut x: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*x).into();
         let y: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*y).into();
         x.muln(64);
-        x.add_nocarry(&y);
-        <E::Scalar as PrimeField>::from_repr(x).unwrap()
+        x.add_with_carry(&y);
+        <E::Scalar as PrimeField>::from_bigint(x).unwrap()
     }
 
     /// Add only a `Signature<E>` to our internal signature,
@@ -132,12 +135,12 @@ impl<E: EngineBLS> Delinearized<E> {
     pub fn add_message_n_publickey(&mut self, message: &Message, mut publickey: PublicKey<E>) -> E::Scalar {
         let mask = self.mask(&publickey);
         // We must use projective corrdinates here, dispite converting to
-        // affine just above, because only `ProjectiveCurve::mul_assign`
+        // affine just above, because only `CurveGroup::mul_assign`
         // skips doubling until a set bit is found.
         // In fact, there is no method to do this without abusing variable
         // time arithmatic, which might change in future, so we should add
-        // some `ProjectiveCurve` method `fn mul_128(&self, blinding: u128)`.
-        // Or even expose the `AffineCurve::mul_bits` method.
+        // some `CurveGroup` method `fn mul_128(&self, blinding: u128)`.
+        // Or even expose the `AffineRepr::mul_bits` method.
         // TODO: Is using affine here actually faster?
         publickey.0 *= mask;
         self.messages_n_publickeys.entry(*message)
@@ -163,8 +166,8 @@ impl<E: EngineBLS> Delinearized<E> {
     // TODO: See https://github.com/dalek-cryptography/merlin/pull/37
     pub fn agreement(&self, other: &Delinearized<E>) -> bool {
         let mut c = [[0u8; 16]; 2];
-        self.key.clone().xof_result().read(&mut c[0]);
-        other.key.clone().xof_result().read(&mut c[1]);
+        self.key.clone().finalize_xof().read(&mut c[0]);
+        other.key.clone().finalize_xof().read(&mut c[1]);
         c[0] == c[1]
     }
 
@@ -188,7 +191,7 @@ impl<E: EngineBLS> Delinearized<E> {
 
 
 /*
-type PublicKeyUncompressed<E> = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as AffineCurve>::Compressed;
+type PublicKeyUncompressed<E> = <<<E as EngineBLS>::$group as ProjectiveCurve>::Affine as AffineRepr>::Compressed;
 
 #[derive(Clone)]
 pub struct DelinearizedRepeatedSigners<E: EngineBLS> {
@@ -198,7 +201,7 @@ pub struct DelinearizedRepeatedSigners<E: EngineBLS> {
 }
 */
 
-#[cfg(test)]
+#[cfg(all(test, feature="std"))]
 mod tests {
     use super::*;
 
@@ -210,7 +213,7 @@ mod tests {
         let mut keypairs = (0..4).into_iter().map(k).collect::<Vec<_>>();
         let dup = keypairs[3].clone();
         keypairs.push(dup);
-        let sigs1 = keypairs.iter_mut().map(|k| k.sign(msg1)).collect::<Vec<_>>();
+        let sigs1 = keypairs.iter_mut().map(|k| k.signed_message(msg1)).collect::<Vec<_>>();
 
         let mut dl = Delinearized::<ZBLS>::new_batched();
         for sig in sigs1.iter() {

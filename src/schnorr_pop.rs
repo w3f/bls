@@ -8,9 +8,8 @@ use crate::single::{SecretKey,PublicKey};
 use digest::{Digest};
 
 use ark_serialize::{CanonicalSerialize};
-use ark_ec::ProjectiveCurve;
-
-use ark_ff::bytes::{FromBytes, ToBytes};
+use ark_ec::{Group, CurveGroup};
+use ark_ff::{PrimeField};
 
 use super::Message;
 
@@ -25,28 +24,26 @@ trait BLSSchnorrPoPGenerator<E: EngineBLS, H: Digest> : ProofOfPossessionGenerat
     /// Produce a secret witness scalar `k`, aka nonce, from hash of
     /// H( H(s) | H(public_key)) because our key does not have the
     /// randomness redundacy exists in EdDSA secret key.
-    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField;
+    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField;
 }
 
 impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for SecretKey<E>
 {
-    /// TODO: BROKEN NOW Switch to https://github.com/arkworks-rs/algebra/pull/164/files
-    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField {
-        let mut secret_key_as_bytes = vec![0;  self.into_vartime().0.serialized_size()];
+    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField {
+        let mut secret_key_as_bytes = vec![0;  self.into_vartime().0.compressed_size()];
 
         let affine_public_key = self.into_public().0.into_affine();
-        let mut public_key_as_bytes = vec![0;  affine_public_key.serialized_size()];
+        let mut public_key_as_bytes = vec![0;  affine_public_key.compressed_size()];
 
-        self.into_vartime().0.serialize(&mut secret_key_as_bytes[..]).unwrap();
-        affine_public_key.serialize(&mut public_key_as_bytes[..]).unwrap();        
+        self.into_vartime().0.serialize_compressed(&mut secret_key_as_bytes[..]).unwrap();
+        affine_public_key.serialize_compressed(&mut public_key_as_bytes[..]).unwrap();        
         
-        let secret_key_hash = <H as Digest>::new().chain(secret_key_as_bytes);
-        let public_key_hash = <H as Digest>::new().chain(public_key_as_bytes);
+        let secret_key_hash = <H as Digest>::new().chain_update(secret_key_as_bytes);
+        let public_key_hash = <H as Digest>::new().chain_update(public_key_as_bytes);
 
-        let mut scalar_bytes = <H as Digest>::new().chain(secret_key_hash.finalize()).chain(public_key_hash.finalize()).finalize();
-	    let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
-	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
-        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap()
+        let mut scalar_bytes = <H as Digest>::new().chain_update(secret_key_hash.finalize()).chain_update(public_key_hash.finalize()).finalize();
+	let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
+        <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(&*random_scalar)
     }
 
 }
@@ -70,17 +67,16 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for SecretKey<E> {
         // avoiding one curve addition in expense of a hash.
         let mut r = <dyn BLSSchnorrPoPGenerator<E,H>>::witness_scalar(self);
         
-        let mut r_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
+        let mut r_point = <<E as EngineBLS>::PublicKeyGroup as Group>::generator();
         r_point *= r; //todo perhaps we need to mandate E to have  a hard coded point
 
         let mut r_point_as_bytes = Vec::<u8>::new();
-        r_point.into_affine().write(&mut r_point_as_bytes).unwrap();
+        r_point.into_affine().serialize_compressed(&mut r_point_as_bytes).unwrap();
 
-        let mut k_as_hash = <H as Digest>::new().chain(r_point_as_bytes).chain(message.0).finalize();
-	    let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
-	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
+        let mut k_as_hash = <H as Digest>::new().chain_update(r_point_as_bytes).chain_update(message.0).finalize();
+	let random_scalar : &mut [u8] = k_as_hash.as_mut_slice();
 
-        let k = <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap();
+        let k = <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(&*random_scalar);
         let s = (k * self.into_vartime().0) + r;
 
         ::zeroize::Zeroize::zeroize(&mut r); //clear secret key from memory
@@ -94,29 +90,27 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
     /// making sure this is equal to zero
     /// H(+s G - k Publkey|M) ==  k  
     fn verify_pok(&self, message: Message, schnorr_proof: SchnorrProof<E>) -> bool {
-        let mut schnorr_point = <<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::prime_subgroup_generator();
+        let mut schnorr_point = <<E as EngineBLS>::PublicKeyGroup as Group>::generator();
         schnorr_point *= schnorr_proof.0;
         let mut k_public_key = self.0;
         k_public_key *= -schnorr_proof.1;
         schnorr_point += k_public_key;
 
         let mut schnorr_point_as_bytes = Vec::<u8>::new();
-        schnorr_point.into_affine().write(&mut schnorr_point_as_bytes).unwrap();
+        schnorr_point.into_affine().serialize_compressed(&mut schnorr_point_as_bytes).unwrap();
 
-        let mut scalar_bytes = <H as Digest>::new().chain(schnorr_point_as_bytes).chain(message.0).finalize();
+        let mut scalar_bytes = <H as Digest>::new().chain_update(schnorr_point_as_bytes).chain_update(message.0).finalize();
 	    let random_scalar = scalar_bytes.as_mut_slice();
-	    random_scalar[31] &= 31; // BROKEN HACK DO BOT DEPLOY
 
         let witness_scaler = schnorr_proof.1;
 
-        <<<E as EngineBLS>::PublicKeyGroup as ProjectiveCurve>::ScalarField as FromBytes>::read(&*random_scalar).unwrap() == witness_scaler
+            <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(random_scalar) == witness_scaler
         
     }
 
 }
 
-#[cfg(test)]
-
+#[cfg(all(test,feature="std"))]
 mod tests {
     #[test]
     fn bls_pop_sign() {

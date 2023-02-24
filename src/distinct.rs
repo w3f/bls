@@ -187,7 +187,7 @@ impl<'a,E: EngineBLS> FromIterator<&'a SignedMessage<E>> for DistinctMessagesRes
 */
 
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use rand::{thread_rng};  // Rng
 
@@ -202,7 +202,7 @@ mod tests {
         let dup = keypairs[3].clone();
         keypairs.push(dup);
 
-        let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(*m)).collect::<Vec<_>>();  
+        let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.signed_message(*m)).collect::<Vec<_>>();  
 
         let dm_new = || DistinctMessages::<ZBLS>::new();
         fn dm_add(dm: DistinctMessages<ZBLS>, sig: &SignedMessage<ZBLS>)
