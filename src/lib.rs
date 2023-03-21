@@ -80,8 +80,7 @@
 //! 
 //!
 
-
-#![feature(test)]
+#![cfg_attr(not(feature = "std"), no_std)]
 #[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
@@ -101,24 +100,32 @@ extern crate rand_chacha;
 extern crate sha3;
 extern crate digest;
 
+extern crate alloc;
+
 #[cfg(feature = "serde")]
 extern crate serde;
 
-use std::borrow::Borrow;
+use core::borrow::Borrow;
 
 pub mod engine;
 pub mod single;
+#[cfg(feature = "std")]
 pub mod distinct;
+#[cfg(feature = "std")]
 pub mod pop;
+#[cfg(feature = "std")]
 pub mod bit;
+#[cfg(feature = "std")]
 pub mod delinear;
 pub mod verifiers;
+#[cfg(feature = "std")]
 pub mod schnorr_pop;
 pub mod chaum_pederson_signature;
 
 pub use engine::*;
 
 pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage, SerializableToBytes};
+#[cfg(feature = "std")]
 pub use bit::{BitSignedMessage,CountSignedMessage};
 
 

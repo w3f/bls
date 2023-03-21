@@ -16,23 +16,25 @@
 //! but still with their affine, projective, and compressed forms,
 //! and batch normalization. 
 
-use std::borrow::{Borrow};
-use std::ops::{MulAssign};
+use core::borrow::{Borrow};
+use core::ops::{MulAssign};
+
+use alloc::{vec, vec::Vec};
 
 use ark_serialize::CanonicalSerialize;
 use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_ec::{AffineRepr, CurveGroup, pairing::{Pairing, PairingOutput, MillerLoopOutput}};
 use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve}};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
-use ark_ec::hashing::curve_maps::wb::{WBParams, WBMap};
+use ark_ec::hashing::curve_maps::wb::{WBConfig, WBMap};
 use rand::{Rng};
 use rand_core::RngCore;
 
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use sha2::Sha256; //IETF standard asks for SHA256
 
-use ark_ec::bls12::Bls12Parameters;
+use ark_ec::bls12::Bls12Config;
 use core::marker::PhantomData;
 
 // Expand SHA256 from 256 bits to 1024 bits.
@@ -216,8 +218,9 @@ pub trait EngineBLS {
 }
 
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
-pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Parameters> ;
-pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
+pub type ZBLS = UsualBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Config> ;
+pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Config>;
+
 /// Usual aggregate BLS signature scheme on ZCash's BLS12-381 curve.
 // pub const Z_BLS : ZBLS = UsualBLS(::zexe_algebra::bls12_381::Bls12_381{});
 
@@ -228,9 +231,9 @@ pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
 /// scalar multiplications with delinearization. 
 /// We also orient this variant to match zcash's traits.
 #[derive(Default)]
-pub struct UsualBLS<E: Pairing, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as Pairing>::G2>;
+pub struct UsualBLS<E: Pairing, P: Bls12Config>(pub E, PhantomData<fn() -> P>) where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as Pairing>::G2>;
 
-impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls12Parameters>::G2Parameters: WBParams, WBMap<<P as Bls12Parameters>::G2Parameters>: MapToCurve<<E as Pairing>::G2>
+impl<E: Pairing, P: Bls12Config> EngineBLS for UsualBLS<E,P> where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as Pairing>::G2>
 {
     type Engine = E;
     type Scalar = <Self::Engine as Pairing>::ScalarField;
@@ -251,7 +254,7 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
     const SIGNATURE_SERIALIZED_SIZE : usize = 96;
 
     type HashToSignatureField = DefaultFieldHasher<Sha256, 128>;
-    type MapToSignatureCurve = WBMap<P::G2Parameters>;
+    type MapToSignatureCurve = WBMap<P::G2Config>;
     
     fn miller_loop<'a,I>(i: I) -> MillerLoopOutput<E>
     where
@@ -285,7 +288,7 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
     }
 
     fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
-	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G2Parameters>>::new(&[1]).unwrap()
+	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G2Config>>::new(&[1]).unwrap()
     }
     
 }
@@ -299,9 +302,9 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for UsualBLS<E,P> where <P as Bls
 /// Yet, there are specific use cases where this variant performs
 /// better.  We swapy two group roles relative to zcash here.
 #[derive(Default)]
-pub struct TinyBLS<E: Pairing, P: Bls12Parameters>(pub E, PhantomData<fn() -> P>) where <P as Bls12Parameters>::G1Parameters: WBParams, WBMap<<P as Bls12Parameters>::G1Parameters>: MapToCurve<<E as Pairing>::G1>;
+ pub struct TinyBLS<E: Pairing, P: Bls12Config>(pub E, PhantomData<fn() -> P>) where <P as Bls12Config>::G1Config: WBConfig, WBMap<<P as Bls12Config>::G1Config>: MapToCurve<<E as Pairing>::G1>;
 
-impl<E: Pairing, P: Bls12Parameters> EngineBLS for TinyBLS<E, P> where <P as Bls12Parameters>::G1Parameters: WBParams, WBMap<<P as Bls12Parameters>::G1Parameters>: MapToCurve<<E as Pairing>::G1>
+impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P> where <P as Bls12Config>::G1Config: WBConfig, WBMap<<P as Bls12Config>::G1Config>: MapToCurve<<E as Pairing>::G1>
 {
     type Engine = E;
     type Scalar = <Self::Engine as Pairing>::ScalarField;
@@ -322,7 +325,7 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for TinyBLS<E, P> where <P as Bls
     const SECRET_KEY_SIZE : usize = 32;
 
     type HashToSignatureField = DefaultFieldHasher<Sha256, 128>;
-    type MapToSignatureCurve = WBMap<P::G1Parameters>;
+    type MapToSignatureCurve = WBMap<P::G1Config>;
 
     fn miller_loop<'a,I>(i: I) -> MillerLoopOutput<E>
     where
@@ -355,8 +358,8 @@ impl<E: Pairing, P: Bls12Parameters> EngineBLS for TinyBLS<E, P> where <P as Bls
         <Self::PublicKeyGroup as Into<Self::PublicKeyPrepared>>::into(-g2_minus_generator.into_group())
     }
 
-    fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
-	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G1Parameters>>::new(&[1]).unwrap()
+        fn hash_to_curve_map() -> MapToCurveBasedHasher::<Self::SignatureGroup, Self::HashToSignatureField, Self::MapToSignatureCurve> {
+	    MapToCurveBasedHasher::<Self::SignatureGroup, DefaultFieldHasher<Sha256, 128>, WBMap<P::G1Config>>::new(&[1]).unwrap()
     }
 
 }

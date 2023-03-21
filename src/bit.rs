@@ -4,8 +4,8 @@
 //! discuraged proof-of-possession flavors of aggregation.
 
 
-use std::borrow::{Borrow,BorrowMut};
-use std::iter::{once};
+use core::borrow::{Borrow,BorrowMut};
+use core::iter::{once};
 
 use ark_ff::{Zero};
 use ark_ec::{Group};
@@ -19,7 +19,7 @@ use super::verifiers::verify_with_distinct_messages;
 // std does not expose `slice::BytewiseEquality`
 fn slice_eq_bytewise<T: PartialEq<T>>(x: &[T], y: &[T]) -> bool {
     if x.len() != y.len() { return false; }
-    if ::std::ptr::eq(x,y) { return true; }
+    if ::core::ptr::eq(x,y) { return true; }
     x == y
 }
 
@@ -83,7 +83,7 @@ where E: EngineBLS, ST: SignerTable<E>
 impl<E,V> SignerTable<E> for V
 where
     E: EngineBLS,
-    V: ::std::ops::Deref<Target=[PublicKey<E>]>
+    V: ::core::ops::Deref<Target=[PublicKey<E>]>
 {
     fn agreement(&self, other: &Self) -> bool {
         slice_eq_bytewise(self.deref(),other.deref())
@@ -131,8 +131,8 @@ pub enum SignerTableError {
     RepeatedSigners,
 }
 
-impl ::std::fmt::Display for SignerTableError {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+impl ::core::fmt::Display for SignerTableError {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
         use self::SignerTableError::*;
         match self {
             BadSignerTable(s) => write!(f, "{}", s),
@@ -197,7 +197,7 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();
@@ -334,7 +334,7 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::std::iter::Once<(Message, PublicKey<E>)>;
+    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         let mut publickey = E::PublicKeyGroup::zero();

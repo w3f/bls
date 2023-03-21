@@ -36,7 +36,7 @@
 
 use digest::Digest;
 
-use std::borrow::{Borrow}; // BorrowMut
+use core::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
 use ark_ff::{Zero};
@@ -198,7 +198,7 @@ mod tests {
     fn verify_aggregate_single_message_single_signer() {
         let good = Message::new(b"ctx",b"test message");
 
-        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig0 = keypair.sign(good);
         assert!(good_sig0.verify(good, &keypair.public));
         
@@ -208,13 +208,13 @@ mod tests {
     fn verify_aggregate_single_message_multi_signers() {
         let good = Message::new(b"ctx",b"test message");
 
-        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig0 = keypair0.sign(good);
 
-        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig1 = keypair1.sign(good);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -230,12 +230,12 @@ mod tests {
         let good0 = Message::new(b"ctx",b"Tab over Space");
         let good1 = Message::new(b"ctx",b"Space over Tab");
 
-        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
 
         let good_sig0 = keypair.sign(good0);
         let good_sig1 = keypair.sign(good1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -251,13 +251,13 @@ mod tests {
         let good0 = Message::new(b"ctx",b"in the beginning");
         let good1 = Message::new(b"ctx",b"there was a flying spaghetti monster");
 
-        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig0 = keypair0.sign(good0);
 
-        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig1 = keypair1.sign(good1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -271,10 +271,10 @@ mod tests {
     fn verify_aggregate_single_message_repetative_signers() {
         let good = Message::new(b"ctx",b"test message");
 
-        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig = keypair.sign(good);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig);
         aggregated_sigs.add_signature(&good_sig);
 
@@ -289,13 +289,13 @@ mod tests {
         let good0 = Message::new(b"ctx",b"Space over Tab");
         let bad1 = Message::new(b"ctx",b"Tab over Space");
 
-        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig0 = keypair0.sign(good0);
 
-        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::generate(thread_rng());
+        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let bad_sig1 = keypair1.sign(bad1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Parameters>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&bad_sig1);
 
