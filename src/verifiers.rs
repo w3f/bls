@@ -1,20 +1,20 @@
 //! ## Algorithms for optimized verification of aggregate and batched BLS signatures.
 //!
 //!
-//! 
+//!
 
 use core::borrow::Borrow;
 #[cfg(feature = "std")]
 use std::collections::HashMap;
 
 use ark_ec::CurveGroup;
-use ark_serialize::{CanonicalSerialize};
+use ark_serialize::CanonicalSerialize;
 
 use alloc::{vec, vec::Vec};
 
 use super::*;
 
-// We define these convenience type alias here instead of engine.rs 
+// We define these convenience type alias here instead of engine.rs
 // because seemingly only verifier implementations really employ them.
 // And we `pub use engine::*` in lib.rs.
 
@@ -30,21 +30,20 @@ pub type SignatureProjective<E> = <E as EngineBLS>::SignatureGroup;
 /// Convenience type alias for affine form of `SignatureGroup`
 pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveGroup>::Affine;
 
-
 /// Simple unoptimized BLS signature verification.  Useful for testing.
 pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
     let signature = S::E::prepare_signature(s.signature().0);
-    let prepared = s.messages_and_publickeys()
-        .map(|(message,public_key)| {
-            (S::E::prepare_public_key(public_key.borrow().0),
-             S::E::prepare_signature(message.borrow().hash_to_signature_curve::<S::E>()))
-        }).collect::<Vec<(_,_)>>();
-    S::E::verify_prepared(
-        signature,
-        prepared.iter()
-    )
+    let prepared = s
+        .messages_and_publickeys()
+        .map(|(message, public_key)| {
+            (
+                S::E::prepare_public_key(public_key.borrow().0),
+                S::E::prepare_signature(message.borrow().hash_to_signature_curve::<S::E>()),
+            )
+        })
+        .collect::<Vec<(_, _)>>();
+    S::E::verify_prepared(signature, prepared.iter())
 }
-
 
 /// Simple universal BLS signature verification
 ///
@@ -52,40 +51,50 @@ pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
 /// securely by calling it only once and batch normalizing all
 /// points, as do most other verification routines here.
 /// We do no optimizations that reduce the number of pairings
-/// by combining repeated messages or signers. 
+/// by combining repeated messages or signers.
 pub fn verify_simple<S: Signed>(s: S) -> bool {
     let signature = s.signature().0;
     // We could write this more idiomatically using iterator adaptors,
     // and avoiding an unecessary allocation for publickeys, but only
     // by calling self.messages_and_publickeys() repeatedly.
     let itr = s.messages_and_publickeys();
-    let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
+    let l = {
+        let (lower, upper) = itr.size_hint();
+        upper.unwrap_or(lower)
+    };
     let mut gpk = Vec::with_capacity(l);
-    let mut gms = Vec::with_capacity(l+1);
-    for (message,publickey) in itr {
-        gpk.push( publickey.borrow().0.clone());
-        gms.push( message.borrow().hash_to_signature_curve::<S::E>() );
+    let mut gms = Vec::with_capacity(l + 1);
+    for (message, publickey) in itr {
+        gpk.push(publickey.borrow().0.clone());
+        gms.push(message.borrow().hash_to_signature_curve::<S::E>());
     }
     let gpk = <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(gpk.as_mut_slice());
     gms.push(signature);
-    let mut gms = <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(gms.as_mut_slice());
+    let mut gms =
+        <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(gms.as_mut_slice());
     let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(gms.pop().unwrap());
-    let prepared = gpk.iter().zip(gms)
-        .map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(*pk), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
-        .collect::<Vec<(_,_)>>();
-    S::E::verify_prepared( signature, prepared.iter())
+    let prepared = gpk
+        .iter()
+        .zip(gms)
+        .map(|(pk, m)| {
+            (
+                <<S as Signed>::E as EngineBLS>::prepare_public_key(*pk),
+                <<S as Signed>::E as EngineBLS>::prepare_signature(m),
+            )
+        })
+        .collect::<Vec<(_, _)>>();
+    S::E::verify_prepared(signature, prepared.iter())
 }
-
 
 /// BLS signature verification optimized for all unique messages
 ///
 /// Assuming all messages are distinct, the minimum number of pairings
-/// is the number of unique signers, which we achieve here. 
+/// is the number of unique signers, which we achieve here.
 /// We do not verify message uniqueness here, but leave this to the
 /// aggregate signature type, like `DistinctMessages`.
 ///
 /// We merge any messages with identical signers and batch normalize
-/// message points and the signature itself. 
+/// message points and the signature itself.
 /// We optionally batch normalize the public keys in the event that
 /// they are provided by algerbaic operaations, but this sounds
 /// unlikely given our requirement that messages be distinct.
@@ -98,21 +107,27 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // mutability, maybe using `BorrowMut` support in
     // `batch_normalization`.
     let itr = signed.messages_and_publickeys();
-    let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
+    let l = {
+        let (lower, upper) = itr.size_hint();
+        upper.unwrap_or(lower)
+    };
     let mut publickeys = Vec::with_capacity(l);
-    let mut messages = Vec::with_capacity(l+1);
-    for (m,pk) in itr {
-        publickeys.push( pk.borrow().0.clone() );
-        messages.push( m.borrow().hash_to_signature_curve::<S::E>() );
+    let mut messages = Vec::with_capacity(l + 1);
+    for (m, pk) in itr {
+        publickeys.push(pk.borrow().0.clone());
+        messages.push(m.borrow().hash_to_signature_curve::<S::E>());
     }
     let mut affine_publickeys = if normalize_public_keys {
-         <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(&publickeys)
+        <<S as Signed>::E as EngineBLS>::PublicKeyGroup::normalize_batch(&publickeys)
     } else {
-        publickeys.iter().map(|pk| pk.into_affine()).collect::<Vec<_>>()
+        publickeys
+            .iter()
+            .map(|pk| pk.into_affine())
+            .collect::<Vec<_>>()
     };
 
     // We next accumulate message points with the same signer.
-    // We could avoid the allocation here if we sorted both 
+    // We could avoid the allocation here if we sorted both
     // arrays in parallel.  This might mean (a) some sort function
     // using `ops::IndexMut` instead of slices, and (b) wrapper types
     // types to make tuples of slices satisfy `ops::IndexMut`.
@@ -120,18 +135,19 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
     type AA<E> = (PublicKeyAffine<E>, SignatureProjective<E>);
     let mut pks_n_ms = HashMap::with_capacity(l);
-    for (pk,m) in affine_publickeys.drain(..)
-                            .zip(messages.drain(..)) 
-    {
-        let mut pk_uncompressed = vec![0;  pk.uncompressed_size()];        
+    for (pk, m) in affine_publickeys.drain(..).zip(messages.drain(..)) {
+        let mut pk_uncompressed = vec![0; pk.uncompressed_size()];
         pk.serialize_uncompressed(&mut pk_uncompressed[..]).unwrap();
-        pks_n_ms.entry(pk_uncompressed)
-            .and_modify(|(_pk0,m0):  &mut AA<S::E>| {*m0 += m;} )
-                .or_insert((pk,m));
+        pks_n_ms
+            .entry(pk_uncompressed)
+            .and_modify(|(_pk0, m0): &mut AA<S::E>| {
+                *m0 += m;
+            })
+            .or_insert((pk, m));
     }
 
     let mut publickeys = Vec::with_capacity(l);
-    for (_,(pk,m)) in pks_n_ms.drain() {
+    for (_, (pk, m)) in pks_n_ms.drain() {
         messages.push(m);
         publickeys.push(pk.clone());
     }
@@ -139,21 +155,30 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
     // We finally normalize the messages and signature
 
     messages.push(signature);
-    let mut affine_messages = <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(messages.as_mut_slice());
-    let signature = <<S as Signed>::E as EngineBLS>::prepare_signature(affine_messages.pop().unwrap());
+    let mut affine_messages =
+        <<S as Signed>::E as EngineBLS>::SignatureGroup::normalize_batch(messages.as_mut_slice());
+    let signature =
+        <<S as Signed>::E as EngineBLS>::prepare_signature(affine_messages.pop().unwrap());
     // TODO: Assess if we could cache normalized message hashes anyplace
     // using interior mutability, but probably this does not work well
     // with ur optimization of collecting messages with thesame signer.
 
     // And verify the aggregate signature.
-    let  prepared = publickeys.iter().zip(messages).map(|(pk,m)| { (<<S as Signed>::E as EngineBLS>::prepare_public_key(*pk), <<S as Signed>::E as EngineBLS>::prepare_signature(m)) })
-        .collect::<Vec<(_,_)>>();
+    let prepared = publickeys
+        .iter()
+        .zip(messages)
+        .map(|(pk, m)| {
+            (
+                <<S as Signed>::E as EngineBLS>::prepare_public_key(*pk),
+                <<S as Signed>::E as EngineBLS>::prepare_signature(m),
+            )
+        })
+        .collect::<Vec<(_, _)>>();
 
-    S::E::verify_prepared( signature, prepared.iter() )
+    S::E::verify_prepared(signature, prepared.iter())
 
     //let prepared = publickeys.iter().zip(&messages);
     //S::E::verify_prepared( &signature, prepared )
-
 }
 
 /*
@@ -167,7 +192,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 ///
 /// We expect this to improve performance dramatically when both
 /// signers and messages are repeated enough, simpler strategies
-/// work as well or better when say messages are distinct. 
+/// work as well or better when say messages are distinct.
 ///
 /// Explination:
 ///
@@ -189,14 +214,14 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// so we may do row or column swaps and row or column addition
 /// operations with small scalars, but not lone row or column scalar
 /// multiplication because these always involve divisions, which
-/// produces large curve points that slow us down thereafter.  
+/// produces large curve points that slow us down thereafter.
 /// We do not require such divisions because we do not solve any
 /// system of equations and do not need ones on the diagonal.
 ///
-/// TODO: 
-/// We leave implementing this optimization to near future work 
+/// TODO:
+/// We leave implementing this optimization to near future work
 /// because it benifits from public keys being affine or having
-/// another hashable representation. 
+/// another hashable representation.
 ///
 ///
 /// As a curiosity, we note one interesting but suboptimal algorithm
@@ -206,8 +231,8 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// operations required to verify aggregated BLS signatures is the
 /// minimal bipartite edge cover, aka bipartite dimension, of the
 /// bipartite graph with vertices given by points on the two curves
-/// and edges given by desired pairings. 
-/// In general, this problem is NP-hard even to approximate. 
+/// and edges given by desired pairings.
+/// In general, this problem is NP-hard even to approximate.
 /// See:  https://en.wikipedia.org/wiki/Bipartite_dimension
 ///
 /// There are polynomial time algorithms for bipartite edge cover in
