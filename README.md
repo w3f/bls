@@ -81,7 +81,7 @@ If you lack proofs-of-possesion, then delinearized approaches are provided in th
 
 ### Efficient Aggregatable BLS Signatures with Chaum-Pedersen Proofs
 
-The scheme introduced in [`ChaumPedersenPoPs.pdf`](./doc/ChaumPedersenPoPs.pdf) is implemented in [`chaum_pederson_signature.rs`](src/chaum_pederson_signature.rs) using `ChaumPedersonSigner` and `ChaumPedersonVerifier` traits and in [`pop.rs`](src/pop.rs) using `add_auxiliary_public_key` and `verify_using_aggregated_auxiliary_public_keys` functions. See benchmark tests for more how to use this scheme.
+The scheme introduced in [`our recent paper`](https://eprint.iacr.org/2022/1611) is implemented in [`chaum_pederson_signature.rs`](src/chaum_pederson_signature.rs) using `ChaumPedersonSigner` and `ChaumPedersonVerifier` traits and in [`pop.rs`](src/pop.rs) using `add_auxiliary_public_key` and `verify_using_aggregated_auxiliary_public_keys` functions. See benchmark tests for more how to use this scheme.
 
 ### Hash to Curve
 
