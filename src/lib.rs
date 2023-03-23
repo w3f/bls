@@ -79,7 +79,8 @@
 //!
 //! 
 //!
-///#![feature(test)] needed for cargo bench
+
+//#![feature(test)] needed for cargo bench
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
@@ -89,7 +90,6 @@ pub struct ReadmeDoctests;
 #[macro_use]
 extern crate arrayref;
 
-extern crate test;
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 

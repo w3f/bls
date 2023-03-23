@@ -195,7 +195,7 @@ mod tests {
     use ark_bls12_381::Bls12_381;
 
     use super::*;
-    use crate::single::DoublePublicKeyScheme;
+    use crate::double::DoublePublicKeyScheme;
     
     #[test]
     fn verify_aggregate_single_message_single_signer() {
@@ -217,58 +217,17 @@ mod tests {
         let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig1 = keypair1.sign(good);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new(good);
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
-        aggregated_sigs.add_message_n_publickey(&good, &keypair0.public);
-        aggregated_sigs.add_message_n_publickey(&good, &keypair1.public);
+        aggregated_sigs.add_publickey(&keypair0.public);
+        aggregated_sigs.add_publickey(&keypair1.public);
 
         assert!(aggregated_sigs.verify() == true, "good aggregated signature of a single message with multiple key does not verify");
 
     }
 
-    #[test]
-    fn verify_aggregate_multi_messages_single_signer() {
-        let good0 = Message::new(b"ctx",b"Tab over Space");
-        let good1 = Message::new(b"ctx",b"Space over Tab");
-
-        let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
-
-        let good_sig0 = keypair.sign(good0);
-        let good_sig1 = keypair.sign(good1);
-
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
-        aggregated_sigs.add_signature(&good_sig0);
-        aggregated_sigs.add_signature(&good_sig1);
-
-        aggregated_sigs.add_message_n_publickey(&good0, &keypair.public);
-        aggregated_sigs.add_message_n_publickey(&good1, &keypair.public);
-
-        assert!(aggregated_sigs.verify() == true, "good aggregated signature of multiple messages with a single key does not verify");
-        
-    }
-
-    #[test]
-    fn verify_aggregate_multi_messages_multi_signers() {
-        let good0 = Message::new(b"ctx",b"in the beginning");
-        let good1 = Message::new(b"ctx",b"there was a flying spaghetti monster");
-
-        let mut keypair0  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
-        let good_sig0 = keypair0.sign(good0);
-
-        let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
-        let good_sig1 = keypair1.sign(good1);
-
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
-        aggregated_sigs.add_signature(&good_sig0);
-        aggregated_sigs.add_signature(&good_sig1);
-
-        aggregated_sigs.add_message_n_publickey(&good0, &keypair0.public);
-        aggregated_sigs.add_message_n_publickey(&good1, &keypair1.public);
-
-        assert!(aggregated_sigs.verify() == true, "good aggregated signature of multiple messages with multiple keys does not verify");
-    }
 
     #[test]
     fn verify_aggregate_single_message_repetative_signers() {
@@ -277,12 +236,12 @@ mod tests {
         let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let good_sig = keypair.sign(good);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new(good);
         aggregated_sigs.add_signature(&good_sig);
         aggregated_sigs.add_signature(&good_sig);
 
-        aggregated_sigs.add_message_n_publickey(&good, &keypair.public);
-        aggregated_sigs.add_message_n_publickey(&good, &keypair.public);
+        aggregated_sigs.add_publickey(&keypair.public);
+        aggregated_sigs.add_publickey(&keypair.public);
 
         assert!(aggregated_sigs.verify() == true, "good aggregate of a repetitive signature does not verify");
     }
@@ -298,12 +257,12 @@ mod tests {
         let mut keypair1  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
         let bad_sig1 = keypair1.sign(bad1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new(good0);
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&bad_sig1);
 
-        aggregated_sigs.add_message_n_publickey(&good0, &keypair0.public);
-        aggregated_sigs.add_message_n_publickey(&good0, &keypair1.public);
+        aggregated_sigs.add_publickey(&keypair0.public);
+        aggregated_sigs.add_publickey(&keypair1.public);
 
         assert!(aggregated_sigs.verify() == false, "aggregated signature of a wrong message should not verify");
     }
@@ -312,96 +271,6 @@ mod tests {
         let mut keypairs : Vec::<Keypair::<TinyBLS377>>  = (0..num_of_keypairs).map(|_| Keypair::<TinyBLS377>::generate(thread_rng())).collect();
         keypairs
         
-    }
-
-    const NO_OF_MULTI_SIG_SIGNERS : usize = 10000;
-    use test::{Bencher, black_box};
-
-    // #[bench]
-    // fn only_generate_key_pairs(b: &mut Bencher) {
-    //     b.iter(|| {
-
-    //         let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
-    //     });
-    // }
-    
-    #[bench]
-    fn test_many_tiny_aggregate_and_verify_in_g2(b: &mut Bencher) {
-        let message = Message::new(b"ctx",b"test message");
-        let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
-	let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
-
-	let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
-	let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-
-        for k in &mut keypairs {
-	    aggregator.aggregate(&k.signed_message(message));
-	    aggregated_public_key.0 += k.public.0;
-        }
-	
-        b.iter(|| {
-	    let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-	    let mut verifier_aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
-
-	    verifier_aggregator.add_signature(&aggregator.signature);
-
-	    for k in &mut keypairs {
-		verifier_aggregated_public_key.0 += k.public.0;
-            }
-
-	    verifier_aggregator.add_message_n_publickey(&message, &verifier_aggregated_public_key);
-	    
-            assert!(verifier_aggregator.verify());
-        });
-    }
-
-    // #[bench]
-    // fn test_many_tiny_aggregate_only_no_verify(b: &mut Bencher) {
-    //     let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
-    // 	let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
-    //     let message = Message::new(b"ctx",b"test message");
-
-    //     b.iter(|| {
-    //         let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-    // 	    let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
-
-    //         for k in &mut keypairs {
-    //             aggregator.aggregate(&k.signed_message(message));
-    // 		aggregated_public_key.0 += k.public.0;
-		
-		
-    //         }
-    //     });
-    // }
-
-    #[bench]
-    fn test_many_tiny_aggregate_and_verify_in_g1(b: &mut Bencher) {
-        let message = Message::new(b"ctx",b"test message");
-        let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
-	let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
- 
-        let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-	let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
-
-        for k in &mut keypairs {
-	    aggregator.aggregate(&k.signed_message(message));
-	    aggregated_public_key.0 += k.public.0;
-        }
-
-        b.iter(|| {
-	    let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-
-	    verifier_aggregator.add_signature(&aggregator.signature);
-	    verifier_aggregator.add_message_n_publickey(&message, &aggregated_public_key);
-	    
-            for k in &pub_keys_in_sig_grp {
-		verifier_aggregator.add_auxiliary_public_key(k);
-	    }
-
-            assert!(verifier_aggregator.verify_using_aggregated_auxiliary_public_keys());
-
-        });
-                                                 
     }
 
 }

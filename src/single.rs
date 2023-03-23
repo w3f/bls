@@ -814,18 +814,18 @@ mod tests {
         let keypair_vt = keypair.into_vartime();
         assert!( keypair_vt.secret.0 == keypair_vt.into_split(thread_rng()).into_vartime().secret.0 );
         assert!( good_sig == keypair.signed_message(good) );
-        assert!( good_sig == keypair_vt.sign(good) );
+        assert!( good_sig == keypair_vt.signed_message(good) );
 
         let bad = Message::new(b"ctx",b"wrong message");
         let bad_sig0 = keypair.signed_message(bad);
 	    let bad_sig = bls_engine_bytes_test(bad_sig0);
-        assert!( bad_sig == keypair.into_vartime().sign(bad) );
+        assert!( bad_sig == keypair.into_vartime().signed_message(bad) );
 
         assert!( bad_sig.verify() );
 
         let another = Message::new(b"ctx",b"another message");
         let another_sig = keypair.signed_message(another);
-        assert!( another_sig == keypair.into_vartime().sign(another) );
+        assert!( another_sig == keypair.into_vartime().signed_message(another) );
         assert!( another_sig.verify() );
 	
         assert!(keypair.public.verify(good, &good_sig.signature),
@@ -883,63 +883,5 @@ mod tests {
         test_deserialize_random_value_as_secret_key_fails::<Bls12_377, ark_bls12_377::Config>(random_seed.as_slice());
     }
 
-    const NO_OF_MULTI_SIG_SIGNERS : usize = 1000;
-    use test::{Bencher, black_box};
-    //#[bench]
-    fn test_bls_verify_many_signatures_simple(b: &mut Bencher) {
-        let good = Message::new(b"ctx",b"test message");
-
-        let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
-        let message = Message::new(b"ctx",b"test message");
-
-        let sig = keypair.signed_message(message);
-
-	b.iter(||
-        for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-            sig.verify();
-        });                                            
-    }
-
-    //#[bench]
-    fn test_bls_verify_many_signatures_chaum_pedersen(b: &mut Bencher) {
-        let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
-        let message = Message::new(b"ctx",b"test message");
-
-        let sig = <Keypair<TinyBLS377> as ChaumPedersenSigner<TinyBLS377, Sha256>>::generate_cp_signature(&mut keypair, message);
-        let public_key_in_sig_group = keypair.into_public_key_in_signature_group();
-
-	b.iter(||
-               for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-		   assert!(<PublicKeyInSignatureGroup<TinyBLS377> as ChaumPedersenVerifier<TinyBLS377, Sha256>>::verify_cp_signature(&public_key_in_sig_group, message,sig));
-        });
-    }
-
-    //#[bench]
-    fn test_pairing(b: &mut Bencher) {
-        let mut keypair1 = Keypair::<TinyBLS377>::generate(thread_rng());
-
-	let point_1 = keypair1.into_public_key_in_signature_group().0;
-	let point_2 = keypair1.public.0;
-
-	b.iter(||
-	for i in 0..NO_OF_MULTI_SIG_SIGNERS {
-            TinyBLS377::pairing(point_2, point_1);
-        });
-
-    }
-    //#[bench]
-    fn test_scalar_multiplication(b: &mut Bencher) {
-        let mut keypair1 = Keypair::<TinyBLS377>::generate(thread_rng());
-
-	let point_1 = keypair1.into_public_key_in_signature_group().0;
-	let point_2 = keypair1.public.0;
-	let scalar = keypair1.secret.into_vartime().0;
-
-	b.iter(||
-	       for i in 0..NO_OF_MULTI_SIG_SIGNERS {
-		   point_1 * scalar;
-               });
-
-    }
 
 }
