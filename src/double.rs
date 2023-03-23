@@ -9,6 +9,7 @@ use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
 
 use sha2::Sha256;
 
+use crate::serialize::SerializableToBytes;
 #[macro_use]
 use crate::{broken_derives};
 use crate::single::{SecretKeyVT,KeypairVT,PublicKey,Keypair, Signature};
@@ -66,6 +67,9 @@ impl<E: EngineBLS> DoublePublicKeyScheme<E> for Keypair<E> {
     }
     
 }
+
+/// Serialization for DoublePublickey
+impl <E: EngineBLS> SerializableToBytes for DoublePublicKey<E>  {const SERIALIZED_BYTES_SIZE : usize  = E::SIGNATURE_SERIALIZED_SIZE+ E::PUBLICKEY_SERIALIZED_SIZE;}
 
 /// Detached BLS Signature containing DLEQ
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -130,3 +134,7 @@ impl<'a,E: EngineBLS> Signed for &'a DoubleSignedMessage<E> {
 	    
     }    
 }
+
+/// Serialization for DoublePublickey
+impl <E: EngineBLS> SerializableToBytes for DoubleSignature<E> {const SERIALIZED_BYTES_SIZE : usize = E::SIGNATURE_SERIALIZED_SIZE + 2 * E::SECRET_KEY_SIZE; }
+
