@@ -98,7 +98,7 @@ impl<E: EngineBLS> DoubleSignature<E> {
 /// Message with attached BLS signature
 /// 
 /// 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct DoubleSignedMessage<E: EngineBLS> {
     pub message: Message,
     pub publickey: DoublePublicKey<E>,
@@ -138,3 +138,48 @@ impl<'a,E: EngineBLS> Signed for &'a DoubleSignedMessage<E> {
 /// Serialization for DoublePublickey
 impl <E: EngineBLS> SerializableToBytes for DoubleSignature<E> {const SERIALIZED_BYTES_SIZE : usize = E::SIGNATURE_SERIALIZED_SIZE + 2 * E::SECRET_KEY_SIZE; }
 
+#[cfg(all(test, feature="std"))]
+mod tests {
+    use rand::thread_rng;
+    
+    use super::*;
+
+    use ark_ec::pairing::Pairing as PairingEngine;
+    use ark_bls12_381::Bls12_381;
+    use ark_bls12_377::Bls12_377;
+    use ark_ec::bls12::Bls12Config;
+    use ark_ec::hashing::curve_maps::wb::{WBConfig, WBMap};
+    use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
+    
+    use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+    use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier};
+    use crate::{EngineBLS, UsualBLS, TinyBLS, Message};
+
+
+    fn double_public_serialization_test<EB: EngineBLS<Engine = E>, E: PairingEngine, P: Bls12Config>(x: DoubleSignedMessage<EB>) -> DoubleSignedMessage<EB> where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2> 
+    {
+        let DoubleSignedMessage { message, publickey, signature } = x;
+
+        let publickey = DoublePublicKey::<EB>::from_bytes(&publickey.to_bytes()).unwrap();
+        let signature = DoubleSignature::<EB>::from_bytes(&signature.to_bytes()).unwrap();
+        
+        DoubleSignedMessage { message, publickey, signature }
+        
+    }
+
+    #[test]
+    fn test_double_public_key_double_signature_serialization_for_bls12_377() {
+	let mut keypair  = Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(thread_rng());
+	let message = Message::new(b"ctx",b"test message");
+        let good_sig0 = DoublePublicKeyScheme::sign(&mut keypair, message);
+
+	let signed_message = DoubleSignedMessage { message: message, publickey: DoublePublicKey(keypair.into_public_key_in_signature_group().0, keypair.public.0), signature: good_sig0};
+
+	assert!(signed_message.verify(), "valid double signed message should verify");
+
+	let deserialized_signed_message = double_public_serialization_test::<TinyBLS<Bls12_377, ark_bls12_377::Config>, Bls12_377, ark_bls12_377::Config>(signed_message);
+
+	assert!(deserialized_signed_message.verify(), "deserialized valid double signed message should verify");
+
+    }
+}
