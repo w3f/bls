@@ -28,8 +28,7 @@ use alloc::{vec, vec::Vec};
 use ark_ff::{UniformRand, Zero};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
        
-use ark_ec::AffineRepr;
-use ark_ec::CurveGroup;
+use ark_ec::{CurveGroup,AffineRepr,};
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize, Valid, Validate, Compress};
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -107,16 +106,6 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 }
 
 
-pub trait DoublePublicKeyScheme<E: EngineBLS> {
-    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E>;
-
-}
-
-impl<E: EngineBLS> DoublePublicKeyScheme<E> for SecretKeyVT<E> {
-    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
-        PublicKeyInSignatureGroup( <E::SignatureGroup as CurveGroup>::Affine::generator().into_group()*self.0)       
-    }
-}
 /// Secret signing key that is split to provide side channel protection.
 ///
 /// A simple key splitting works because
@@ -308,6 +297,7 @@ impl<E: EngineBLS> BorrowMut<E::$wrapped> for $wrapper<E> {
 } // macro_rules!
 */
 
+#[macro_export]
 macro_rules! broken_derives {
     ($wrapper:tt) => {
 
@@ -439,6 +429,8 @@ pub trait SerializableToBytes:
 // impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
 impl <E: EngineBLS> SerializableToBytes for Signature<E> {const SERIALIZED_BYTES_SIZE : usize = E::SIGNATURE_SERIALIZED_SIZE;}
 impl <E: EngineBLS> SerializableToBytes for PublicKey<E>  {const SERIALIZED_BYTES_SIZE : usize  = E::PUBLICKEY_SERIALIZED_SIZE;}
+impl <E: EngineBLS> SerializableToBytes for SecretKeyVT<E>  {const SERIALIZED_BYTES_SIZE : usize = E::SECRET_KEY_SIZE;}
+
 impl <E: EngineBLS> SerializableToBytes for SecretKey<E>  {const SERIALIZED_BYTES_SIZE : usize = E::SECRET_KEY_SIZE;}
 
 /// because SecretKey is not canonically serializable and that we need to convert
@@ -493,10 +485,6 @@ impl<E: EngineBLS> PublicKey<E> {
     }
 }
 
-#[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PublicKeyInSignatureGroup<E: EngineBLS>(pub E::SignatureGroup);
-broken_derives!(PublicKeyInSignatureGroup);  // Actually the derive works for this one, not sure why.
-
 /// BLS Keypair
 ///
 /// We create `Signed` messages with a `Keypair` to avoid recomputing
@@ -516,15 +504,7 @@ impl<E: EngineBLS> Clone for KeypairVT<E> {
     } }
 }
 
-impl<E: EngineBLS> DoublePublicKeyScheme<E> for KeypairVT<E> {
-    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
-        self.secret.into_public_key_in_signature_group()
-    }
-    
-}
-
 // TODO: Serialization
-
 impl<E: EngineBLS> KeypairVT<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
@@ -543,7 +523,12 @@ impl<E: EngineBLS> KeypairVT<E> {
     }
 
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
-    pub fn sign(&self, message: Message) -> SignedMessage<E> {
+    pub fn sign(&self, message: Message) -> Signature<E> {
+        self.secret.sign(message)
+    }
+    
+    /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
+    pub fn signed_message(&self, message: Message) -> SignedMessage<E> {
         let signature = self.secret.sign(message);  
         SignedMessage {
             message,
@@ -552,7 +537,6 @@ impl<E: EngineBLS> KeypairVT<E> {
         }
     }
 }
-
 
 /// BLS Keypair
 ///
@@ -574,7 +558,6 @@ impl<E: EngineBLS> Clone for Keypair<E> {
 }
 
 // TODO: Serialization
-
 impl<E: EngineBLS> Keypair<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
@@ -582,13 +565,6 @@ impl<E: EngineBLS> Keypair<E> {
         let public = secret.into_public();
         Keypair { secret, public }
     }
-}
-
-impl<E: EngineBLS> DoublePublicKeyScheme<E> for Keypair<E> {
-    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
-        self.into_vartime().into_public_key_in_signature_group()
-    }
-    
 }
 
 impl<E: EngineBLS> Keypair<E> {
@@ -641,7 +617,6 @@ impl<E: EngineBLS> Keypair<E> {
             signature,
         }
     }
-
 }
 
 /// Message with attached BLS signature
@@ -770,7 +745,7 @@ mod tests {
     
     use super::*;
     use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
-    use crate::chaum_pederson_signature::{ChaumPedersonSigner, ChaumPedersonVerifier};
+    use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier};
     
     use hex_literal::hex;
     use core::convert::TryInto;
@@ -926,16 +901,16 @@ mod tests {
     }
 
     //#[bench]
-    fn test_bls_verify_many_signatures_chaum_pederson(b: &mut Bencher) {
+    fn test_bls_verify_many_signatures_chaum_pedersen(b: &mut Bencher) {
         let mut keypair = Keypair::<TinyBLS377>::generate(thread_rng());
         let message = Message::new(b"ctx",b"test message");
 
-        let sig = <Keypair<TinyBLS377> as ChaumPedersonSigner<TinyBLS377, Sha256>>::generate_cp_signature(&mut keypair, message);
+        let sig = <Keypair<TinyBLS377> as ChaumPedersenSigner<TinyBLS377, Sha256>>::generate_cp_signature(&mut keypair, message);
         let public_key_in_sig_group = keypair.into_public_key_in_signature_group();
 
 	b.iter(||
                for i in 1..NO_OF_MULTI_SIG_SIGNERS {
-		   assert!(<PublicKeyInSignatureGroup<TinyBLS377> as ChaumPedersonVerifier<TinyBLS377, Sha256>>::verify_cp_signature(&public_key_in_sig_group, message,sig));
+		   assert!(<PublicKeyInSignatureGroup<TinyBLS377> as ChaumPedersenVerifier<TinyBLS377, Sha256>>::verify_cp_signature(&public_key_in_sig_group, message,sig));
         });
     }
 

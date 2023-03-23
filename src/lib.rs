@@ -79,6 +79,7 @@
 //!
 //! 
 //!
+///#![feature(test)] needed for cargo bench
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
@@ -88,7 +89,7 @@ pub struct ReadmeDoctests;
 #[macro_use]
 extern crate arrayref;
 
-extern crate  test;
+extern crate test;
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
@@ -109,10 +110,13 @@ use core::borrow::Borrow;
 
 pub mod engine;
 pub mod single;
+pub mod double;
 #[cfg(feature = "std")]
 pub mod distinct;
 #[cfg(feature = "std")]
 pub mod pop;
+#[cfg(feature = "std")]
+pub mod multi_pop_aggregator;
 #[cfg(feature = "std")]
 pub mod bit;
 #[cfg(feature = "std")]
@@ -120,7 +124,7 @@ pub mod delinear;
 pub mod verifiers;
 #[cfg(feature = "std")]
 pub mod schnorr_pop;
-pub mod chaum_pederson_signature;
+pub mod chaum_pedersen_signature;
 
 pub use engine::*;
 

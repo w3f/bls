@@ -364,4 +364,4 @@ impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P> where <P as Bls12Co
 
 }
 
-pub type TinyBLS377 = TinyBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Parameters>;
+pub type TinyBLS377 = TinyBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Config>;

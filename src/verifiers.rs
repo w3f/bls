@@ -13,6 +13,10 @@ use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
 
 use alloc::{vec, vec::Vec};
 
+use digest::{Digest};
+use sha2::Sha256;    
+
+
 use super::*;
 
 // We define these convenience type alias here instead of engine.rs 

@@ -1,7 +1,7 @@
 //! ## Implementation of ProofofPossion trait for BLS keys using schnorr sginature
 //! ## TODO: I assume this can also moved to pop.rs but for now I put it separately to help reviews
 use crate::engine::{EngineBLS};
-use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier, SchnorrProof};
+use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
 
 use crate::single::{PublicKey,Keypair,SerializableToBytes};
 
@@ -11,7 +11,10 @@ use ark_serialize::{CanonicalSerialize};
 use ark_ec::{Group, CurveGroup};
 use ark_ff::{PrimeField};
 
-use super::Message;
+use crate::Message;
+
+//TODO: shouldn't this go to Schnoor module?
+pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
 
 // TODO: Delete after migration to secret key model
 // pub struct BLSSchnorrProof<E: EngineBLS> : trait B: {
