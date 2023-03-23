@@ -108,6 +108,7 @@ extern crate serde;
 
 use core::borrow::Borrow;
 
+pub mod serialize;
 pub mod engine;
 pub mod single;
 pub mod double;
@@ -128,7 +129,8 @@ pub mod chaum_pedersen_signature;
 
 pub use engine::*;
 
-pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage, SerializableToBytes};
+pub use serialize::SerializableToBytes;
+pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage,};
 #[cfg(feature = "std")]
 pub use bit::{BitSignedMessage,CountSignedMessage};
 

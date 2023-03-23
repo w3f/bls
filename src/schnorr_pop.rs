@@ -3,11 +3,12 @@
 use crate::engine::{EngineBLS};
 use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
 
-use crate::single::{PublicKey,Keypair,SerializableToBytes};
+use crate::serialize::SerializableToBytes;
+use crate::single::{PublicKey,Keypair};
 
 use digest::{Digest};
 
-use ark_serialize::{CanonicalSerialize};
+use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
 use ark_ec::{Group, CurveGroup};
 use ark_ff::{PrimeField};
 

@@ -8,7 +8,8 @@ use crate::{Message, SecretKeyVT};
 use crate::engine::EngineBLS;
 #[macro_use]
 use crate::broken_derives;
-use crate::single::{Keypair, PublicKey, Signature, SerializableToBytes, };
+use crate::serialize::SerializableToBytes;
+use crate::single::{Keypair, PublicKey, Signature,};
 use crate::double::{PublicKeyInSignatureGroup, DoublePublicKeyScheme};
 use crate::schnorr_pop::SchnorrProof;
 
