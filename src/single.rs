@@ -459,7 +459,6 @@ broken_derives!(PublicKey);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
-
     pub fn verify(&self, message: Message, signature: &Signature<E>) -> bool {
         signature.verify(message,self)
     }
@@ -872,6 +871,5 @@ mod tests {
         let random_seed  = hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
         test_deserialize_random_value_as_secret_key_fails::<Bls12_377, ark_bls12_377::Config>(random_seed.as_slice());
     }
-
 
 }
