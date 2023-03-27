@@ -172,6 +172,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// We optionally batch normalize the public keys in the event that
 /// they are provided by algerbaic operaations, but this sounds
 /// unlikely given our requirement that messages be distinct.
+#[cfg(feature = "std")]
 pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(signed: &pop::SignatureAggregatorAssumingPoP<E>, normalize_public_keys: bool, aggregated_aux_pub_key: <E as EngineBLS>::SignatureGroup) -> bool {
     let signature = Signed::signature(&signed).0;
 

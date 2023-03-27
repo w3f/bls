@@ -1,7 +1,7 @@
 //! ## Implementation of ProofofPossion trait for BLS keys using schnorr sginature
 //! ## TODO: I assume this can also moved to pop.rs but for now I put it separately to help reviews
 use crate::engine::{EngineBLS};
-use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+use crate::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
 
 use crate::serialize::SerializableToBytes;
 use crate::single::{PublicKey,Keypair};
@@ -111,7 +111,7 @@ impl<E: EngineBLS, H: Digest> ProofOfPossessionVerifier<E,H> for PublicKey<E> {
 mod tests {
     #[test]
     fn bls_pop_sign() {
-        use crate::pop::{ProofOfPossessionGenerator};
+        use crate::{ProofOfPossessionGenerator};
         use crate::single::{Keypair};
         use crate::engine::{ZBLS};
         use crate::Message;
@@ -131,7 +131,7 @@ mod tests {
         use crate::single::{Keypair};
         use crate::engine::{ZBLS};
         use crate::Message;
-        use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+        use crate::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
 
 
         let keypair  = Keypair::<ZBLS>::generate(thread_rng());

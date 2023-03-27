@@ -34,10 +34,8 @@
 // Aside about proof-of-possession in the DLOG setting
 // https://twitter.com/btcVeg/status/1085490561082183681
 
-use digest::Digest;
 
 use core::borrow::{Borrow}; // BorrowMut
-use std::collections::HashMap;
 
 use ark_ff::{Zero};
 
@@ -86,19 +84,6 @@ use core::iter::once;
 use single::{PublicKey};
 use double::PublicKeyInSignatureGroup;
 use schnorr_pop::SchnorrProof;
-
-/// ProofOfPossion trait which should be implemented by secret
-pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
-    /// The proof of possession generator is supposed to
-    /// to produce a schnoor signature of the publickey using
-    /// the secret key which it claim to possess.
-    fn generate_pok(&self) -> SchnorrProof<E>;
-}
-
-/// This should be implemented by public key
-pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
-    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
-}
 
 #[derive(Clone)]
 pub struct SignatureAggregatorAssumingPoP <E: EngineBLS> {

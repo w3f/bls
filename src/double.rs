@@ -2,6 +2,7 @@
 //!
 
 use core::iter::once;
+use alloc::{vec, vec::Vec};
 
 use ark_ec::{CurveGroup,AffineRepr,};
 
@@ -161,7 +162,7 @@ mod tests {
     use ark_ec::hashing::curve_maps::wb::{WBConfig, WBMap};
     use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
     
-    use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+    use crate::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
     use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier};
     use crate::{EngineBLS, UsualBLS, TinyBLS, Message};
 

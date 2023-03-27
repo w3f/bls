@@ -723,7 +723,7 @@ mod tests {
     use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
     
     use super::*;
-    use crate::pop::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+    use crate::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
     use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier};
     use crate::{UsualBLS, TinyBLS};
     

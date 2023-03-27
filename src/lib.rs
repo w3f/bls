@@ -107,25 +107,25 @@ extern crate alloc;
 extern crate serde;
 
 use core::borrow::Borrow;
+use digest::Digest;
 
 pub mod serialize;
 pub mod engine;
 pub mod single;
 pub mod double;
-#[cfg(feature = "std")]
-pub mod distinct;
+pub mod schnorr_pop;
+pub mod chaum_pedersen_signature;
+pub mod verifiers;
 #[cfg(feature = "std")]
 pub mod pop;
 #[cfg(feature = "std")]
 pub mod multi_pop_aggregator;
 #[cfg(feature = "std")]
+pub mod distinct;
+#[cfg(feature = "std")]
 pub mod bit;
 #[cfg(feature = "std")]
 pub mod delinear;
-pub mod verifiers;
-#[cfg(feature = "std")]
-pub mod schnorr_pop;
-pub mod chaum_pedersen_signature;
 
 pub use engine::*;
 
@@ -133,7 +133,7 @@ pub use serialize::SerializableToBytes;
 pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage,};
 #[cfg(feature = "std")]
 pub use bit::{BitSignedMessage,CountSignedMessage};
-
+pub use schnorr_pop::SchnorrProof;
 
 /// Internal message hash size.  
 ///
@@ -213,6 +213,19 @@ pub trait Signed: Sized {
     fn verify(self) -> bool {
         verifiers::verify_simple(self)
     }
+}
+
+/// ProofOfPossion trait which should be implemented by secret
+pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
+    /// The proof of possession generator is supposed to
+    /// to produce a schnoor signature of the publickey using
+    /// the secret key which it claim to possess.
+    fn generate_pok(&self) -> SchnorrProof<E>;
+}
+
+/// This should be implemented by public key
+pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
+    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
 }
 
 // #[cfg(test)]
