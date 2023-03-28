@@ -40,7 +40,22 @@ impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for Keypair<E>
 impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for Keypair<E> {
 
     //TODO: Message must be equal to public key. 
-    fn generate_pok(&self) -> SchnorrProof<E> {        // instead we actually doing H(s*G - H(R|M)*Publickey|M) == H(R|M) == k        // avoiding one curve addition (or two field divisions) in expense of a hash.
+    fn generate_pok(&self) -> SchnorrProof<E> {
+        //First we should figure out the base point in E, I think the secret key trait/struct knows about it.
+
+        //choose random scaler k
+        //For now we don't we just use a trick similar to Ed25519
+        //we use hash of concatination of hash the secret key and the public key
+
+        //schnorr equations
+
+        //R = rG.
+        //k = H(R|M)
+        //s = k*private_key + r
+        // publishing (s, R) verifying that (s*G = H(R|M)*Publickey + R => H(R|M)*Publickey + R - s*G = 0)
+        // so either we need to two into_affine and one curve addition or or two curve additions.
+        // instead we actually doing H(s*G - H(R|M)*Publickey|M) == H(R|M) == k
+	// avoiding one curve addition (or two field divisions) in expense of a hash.
         let mut r = <dyn BLSSchnorrPoPGenerator<E,H>>::witness_scalar(self);
         
         let mut r_point = <<E as EngineBLS>::PublicKeyGroup as Group>::generator();

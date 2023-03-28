@@ -31,6 +31,9 @@
 //! so that the `BitPoPSignedMessage` type provides a signature
 //! data type with reasonable sanity checks.
 
+// Aside about proof-of-possession in the DLOG setting
+// https://twitter.com/btcVeg/status/1085490561082183681
+
 use core::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
@@ -68,8 +71,13 @@ use super::verifiers::{verify_with_distinct_messages,};
 /// the `ProofsOfPossession` trait tooling permits both enforce the
 /// proofs-of-possession and provide a compact serialization.
 /// We see no reason to support serialization for this type as present.
-////TODO: shouldn't this go to Schnoor module?
-pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
+//
+/// In principle, one might combine proof-of-possession with distinct
+/// message assumptions, or other aggregation strategies, when
+/// verifiers have only observed a subset of the proofs-of-possession,
+/// but this sounds complex or worse fragile.
+///
+// TODO: Implement gaussian elimination verification scheme.
 
 use single::{PublicKey};
 /// ProofOfPossion trait which should be implemented by secret
