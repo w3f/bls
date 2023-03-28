@@ -21,6 +21,7 @@ use core::ops::{MulAssign};
 
 use alloc::{vec, vec::Vec};
 
+use ark_serialize::CanonicalSerialize;
 use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_ec::{AffineRepr, CurveGroup, pairing::{Pairing, PairingOutput, MillerLoopOutput}};
 use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::{MapToCurveBasedHasher, MapToCurve}};
@@ -171,14 +172,14 @@ pub trait EngineBLS {
             Self::SignaturePrepared,
         )>
     {
-        let lhs: [_;1] = [(Self::public_key_minus_generator_prepared(),signature)];
+        let lhs: [_;1] = [(Self::minus_generator_of_public_key_group_prepared(),signature)];
         Self::final_exponentiation( Self::miller_loop(
             inputs.into_iter().map(|t| t).chain(&lhs)
 	) ).unwrap() == (PairingOutput::<Self::Engine>::zero()) //zero is the target_field::one !!
     }
     
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared() -> Self::PublicKeyPrepared;
+    fn minus_generator_of_public_key_group_prepared() -> Self::PublicKeyPrepared;
 
     /// Process the public key to be use in pairing. This has to be
     /// implemented by the type of BLS system implementing the engine
@@ -197,6 +198,22 @@ pub trait EngineBLS {
 	    let g_affine: Self::SignatureGroupAffine = g.into();
         Self::SignaturePrepared::from(g_affine)
     }
+
+    /// Serialization helper for various sigma protocols
+    fn signature_point_to_byte(point: &Self::SignatureGroup) -> Vec<u8> {
+	let mut point_as_bytes = vec![0;  Self::SIGNATURE_SERIALIZED_SIZE];
+	let point_affine = point.into_affine();
+	point_affine.serialize_compressed(&mut point_as_bytes[..]).unwrap();
+	point_as_bytes
+    }    
+	
+
+    fn public_key_point_to_byte(point: &Self::PublicKeyGroup) -> Vec<u8> {
+	let mut point_as_bytes = vec![0;  Self::PUBLICKEY_SERIALIZED_SIZE];
+	let point_affine = point.into_affine();
+	point_affine.serialize_compressed(&mut point_as_bytes[..]).unwrap();
+	point_as_bytes
+    }    
 
 }
 
@@ -263,7 +280,7 @@ impl<E: Pairing, P: Bls12Config> EngineBLS for UsualBLS<E,P> where <P as Bls12Co
     }
 
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared()
+    fn minus_generator_of_public_key_group_prepared()
      -> Self::PublicKeyPrepared
     {
         let g1_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::generator();
@@ -334,7 +351,7 @@ impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P> where <P as Bls12Co
     }
 
     /// Prepared negative of the generator of the public key curve.
-    fn public_key_minus_generator_prepared()
+    fn minus_generator_of_public_key_group_prepared()
      -> Self::PublicKeyPrepared
     {
         let g2_minus_generator = <Self::PublicKeyGroup as CurveGroup>::Affine::generator();
@@ -347,3 +364,7 @@ impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P> where <P as Bls12Co
 
 }
 
+/// Aggregate BLS signature scheme with Signature in G1 for BLS12-377 curve.
+pub type TinyBLS377 = TinyBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Config>;
+/// Aggregate BLS signature scheme with Signature in G1 for BLS12-381 curve.
+pub type TinyBLS381 = TinyBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Config>;

@@ -28,8 +28,7 @@ use alloc::{vec, vec::Vec};
 use ark_ff::{UniformRand, Zero};
 use ark_ff::field_hashers::{DefaultFieldHasher,HashToField};
        
-use ark_ec::AffineRepr;
-use ark_ec::CurveGroup;
+use ark_ec::{CurveGroup,AffineRepr,};
 
 use ark_serialize::{SerializationError, Read, Write, CanonicalSerialize, CanonicalDeserialize, Valid, Validate, Compress};
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -43,7 +42,8 @@ use digest::{Digest};
 
 use core::iter::once;
 
-use super::*;
+use crate::serialize::SerializableToBytes;
+use crate::{EngineBLS, Message, Signed,};
 // //////////////// SECRETS //////////////// //
 
 /// Secret signing key lacking the side channel protections from
@@ -105,6 +105,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
         // PublicKey(p)
     }
 }
+
 
 /// Secret signing key that is split to provide side channel protection.
 ///
@@ -297,6 +298,7 @@ impl<E: EngineBLS> BorrowMut<E::$wrapped> for $wrapper<E> {
 } // macro_rules!
 */
 
+#[macro_export]
 macro_rules! broken_derives {
     ($wrapper:tt) => {
 
@@ -401,32 +403,15 @@ impl<E> CanonicalDeserialize for SecretKey<E> where E: EngineBLS {
 
 }
 
-// Note that ark_ff::bytes::ToBytes for projective points export them without converting them to affine
-// and so they might leak information about the secret key.
-pub trait SerializableToBytes<const SERIALIZED_BYTES_SIZE: usize>:
-    CanonicalSerialize +
-    CanonicalDeserialize 
-{
-    fn to_bytes(&self) -> [u8; SERIALIZED_BYTES_SIZE]  {
-        let mut serialized_representation = [0u8; SERIALIZED_BYTES_SIZE];
-        self.serialize_compressed(&mut serialized_representation[..]).unwrap();
-
-        return serialized_representation;
-
-     }
-
-    fn from_bytes(bytes: &[u8; SERIALIZED_BYTES_SIZE]) -> Result<Self,SerializationError>  {
-        Self::deserialize_compressed(bytes.as_slice())
-     }
- }
-
 //TODO: when const generic becomes stable we get the size from the trait and return
 //      constant size array so it can be implemented as follows
 // impl <E: EngineBLS> SerializableToBytes<{ E::SIGNATURE_SERIALIZED_SIZE }> for Signature<E> {}
 // impl <E: EngineBLS> SerializableToBytes<{ PublicKey::E::PUBLICKEY_SERIALIZED_SIZE }> for PublicKey<E>  {}
-impl <E: EngineBLS> SerializableToBytes<96> for Signature<E> {}
-impl <E: EngineBLS> SerializableToBytes<48> for PublicKey<E>  {}
-impl <E: EngineBLS> SerializableToBytes<32> for SecretKey<E>  {}
+impl <E: EngineBLS> SerializableToBytes for Signature<E> {const SERIALIZED_BYTES_SIZE : usize = E::SIGNATURE_SERIALIZED_SIZE;}
+impl <E: EngineBLS> SerializableToBytes for PublicKey<E>  {const SERIALIZED_BYTES_SIZE : usize  = E::PUBLICKEY_SERIALIZED_SIZE;}
+impl <E: EngineBLS> SerializableToBytes for SecretKeyVT<E>  {const SERIALIZED_BYTES_SIZE : usize = E::SECRET_KEY_SIZE;}
+
+impl <E: EngineBLS> SerializableToBytes for SecretKey<E>  {const SERIALIZED_BYTES_SIZE : usize = E::SECRET_KEY_SIZE;}
 
 /// because SecretKey is not canonically serializable and that we need to convert
 /// it to vartime first we need to manually re-implement this trait for secret keys
@@ -474,7 +459,6 @@ broken_derives!(PublicKey);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
-
     pub fn verify(&self, message: Message, signature: &Signature<E>) -> bool {
         signature.verify(message,self)
     }
@@ -484,7 +468,7 @@ impl<E: EngineBLS> PublicKey<E> {
 ///
 /// We create `Signed` messages with a `Keypair` to avoid recomputing
 /// the public key, which usually takes longer than signing when
-/// the public key group is `G2`.
+/// the public key group is `G2`.2
 ///
 /// We provide constant-time signing using key splitting.
 pub struct KeypairVT<E: EngineBLS> {
@@ -500,7 +484,6 @@ impl<E: EngineBLS> Clone for KeypairVT<E> {
 }
 
 // TODO: Serialization
-
 impl<E: EngineBLS> KeypairVT<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
@@ -519,7 +502,12 @@ impl<E: EngineBLS> KeypairVT<E> {
     }
 
     /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
-    pub fn sign(&self, message: Message) -> SignedMessage<E> {
+    pub fn sign(&self, message: Message) -> Signature<E> {
+        self.secret.sign(message)
+    }
+    
+    /// Sign a message creating a `SignedMessage` using a user supplied CSPRNG for the key splitting.
+    pub fn signed_message(&self, message: Message) -> SignedMessage<E> {
         let signature = self.secret.sign(message);  
         SignedMessage {
             message,
@@ -528,7 +516,6 @@ impl<E: EngineBLS> KeypairVT<E> {
         }
     }
 }
-
 
 /// BLS Keypair
 ///
@@ -550,7 +537,6 @@ impl<E: EngineBLS> Clone for Keypair<E> {
 }
 
 // TODO: Serialization
-
 impl<E: EngineBLS> Keypair<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
@@ -581,26 +567,23 @@ impl<E: EngineBLS> Keypair<E> {
 
     /// Sign a message using a Seedabale RNG created from a seed derived from the message and key
     pub fn sign(&mut self, message: Message) -> Signature<E> {
-        let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
-
 	let mut serialized_part1 = [0u8; 32];
         let mut serialized_part2 = [0u8; 32]; 
         self.secret.key[0].serialize_compressed(&mut serialized_part1[..]).unwrap();
         self.secret.key[1].serialize_compressed(&mut serialized_part2[..]).unwrap();
         
-        let mut seed_digest  = Sha256::new().chain_update(serialized_part1).chain_update(serialized_part2).chain_update(message.0);
+        let seed_digest  = Sha256::new().chain_update(serialized_part1).chain_update(serialized_part2).chain_update(message.0);
 
         let seed : [u8; 32] = seed_digest.finalize().into();
 
         self.sign_with_rng::<StdRng>(message, SeedableRng::from_seed(seed))
     }
-
+  
     #[cfg(feature = "std")]
     /// Sign a message creating a `Signature` using the default `ThreadRng`.
     pub fn sign_thread_rng(&mut self, message: Message) -> Signature<E> {
         	self.sign_with_rng(message,thread_rng())
     }
-
     
     /// Create a `SignedMessage` using the default `ThreadRng`.
     pub fn signed_message(&mut self, message: Message) -> SignedMessage<E> {
@@ -611,9 +594,7 @@ impl<E: EngineBLS> Keypair<E> {
             signature,
         }
     }
-
 }
-
 
 /// Message with attached BLS signature
 /// 
@@ -740,15 +721,19 @@ mod tests {
     use ark_ec::hashing::map_to_curve_hasher::{MapToCurve};
     
     use super::*;
-
+    use crate::{ProofOfPossessionGenerator, ProofOfPossessionVerifier};
+    use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier};
+    use crate::{UsualBLS, TinyBLS};
+    
     use hex_literal::hex;
     use core::convert::TryInto;
     
-    fn bls_engine_bytes_test<E: PairingEngine, P: Bls12Config>(x: SignedMessage<UsualBLS<E,P>>) -> SignedMessage<UsualBLS<E, P>> where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2> {
+    fn bls_engine_serialization_test<EB: EngineBLS<Engine = E>, E: PairingEngine, P: Bls12Config>(x: SignedMessage<EB>) -> SignedMessage<EB> where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2> 
+    {
         let SignedMessage { message, publickey, signature } = x;
 
-        let publickey = PublicKey::<UsualBLS<E,P>>::from_bytes(&publickey.to_bytes()).unwrap();
-        let signature = Signature::<UsualBLS<E,P>>::from_bytes(&signature.to_bytes()).unwrap();
+        let publickey = PublicKey::<EB>::from_bytes(&publickey.to_bytes()).unwrap();
+        let signature = Signature::<EB>::from_bytes(&signature.to_bytes()).unwrap();
         
         SignedMessage { message, publickey, signature }
         
@@ -781,20 +766,12 @@ mod tests {
 
     }
     
-    // Commented to rid of unused warnings
-    // TODO: add a test after making tinybls works
-    
-    // pub type TBLS = TinyBLS<ark_bls12_381::Bls12_381>;
-
-    // fn zbls_tiny_bytes_test(x: SignedMessage<TBLS>) -> SignedMessage<TBLS> {
+    // fn test_public_key_and_message_serialization<E: PairingEngine, P: Bls12Config>(x: SignedMessage<EB>)-> SignedMessage<E> where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2> {	
     //     let SignedMessage { message, publickey, signature } = x;
-    //     let publickey = PublicKey::<TBLS>::from_bytes(publickey.to_bytes()).unwrap();        
-    //     let signature = Signature::<TBLS>::from_bytes(signature.to_bytes()).unwrap();
-    //     SignedMessage { message, publickey, signature }
+    //     let publickey = PublicKey::<E>::from_bytes(publickey.to_bytes()).unwrap();        
+    //     let signature = Signature::<E>::from_bytes(signature.to_bytes()).unwrap();
+    //     assert!(SignedMessage { message, publickey, signature } == x);	
     // }
-
-    //bls_engine_bytes_tester!(UsualBLS, Bls12_381, 48);
-    //bls_engine_bytes_tester!(UsualBLS, Bls12_377, 48);
     
     fn test_single_bls_message<E: PairingEngine, P: Bls12Config>() where <P as Bls12Config>::G2Config: WBConfig, WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2> {
 
@@ -802,24 +779,24 @@ mod tests {
 
         let mut keypair  = Keypair::<UsualBLS<E,P>>::generate(thread_rng());
         let good_sig0 = keypair.signed_message(good);
-        let good_sig = bls_engine_bytes_test(good_sig0);
+        let good_sig = bls_engine_serialization_test::<UsualBLS<E,P>, E, P>(good_sig0);
         assert!(good_sig.verify_slow());
 
         let keypair_vt = keypair.into_vartime();
         assert!( keypair_vt.secret.0 == keypair_vt.into_split(thread_rng()).into_vartime().secret.0 );
         assert!( good_sig == keypair.signed_message(good) );
-        assert!( good_sig == keypair_vt.sign(good) );
+        assert!( good_sig == keypair_vt.signed_message(good) );
 
         let bad = Message::new(b"ctx",b"wrong message");
         let bad_sig0 = keypair.signed_message(bad);
-	    let bad_sig = bls_engine_bytes_test(bad_sig0);
-        assert!( bad_sig == keypair.into_vartime().sign(bad) );
+	    let bad_sig = bls_engine_serialization_test::<UsualBLS<E,P>, E, P>(bad_sig0);
+        assert!( bad_sig == keypair.into_vartime().signed_message(bad) );
 
         assert!( bad_sig.verify() );
 
         let another = Message::new(b"ctx",b"another message");
         let another_sig = keypair.signed_message(another);
-        assert!( another_sig == keypair.into_vartime().sign(another) );
+        assert!( another_sig == keypair.into_vartime().signed_message(another) );
         assert!( another_sig.verify() );
 	
         assert!(keypair.public.verify(good, &good_sig.signature),
@@ -841,16 +818,32 @@ mod tests {
 	    let mut keypair  = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
             let good_sig0 = keypair.signed_message(Message::new(b"ctx",b"test message"));
 
-	    bls_engine_bytes_test(good_sig0);
+	    bls_engine_serialization_test::<UsualBLS<Bls12_381, ark_bls12_381::Config>, Bls12_381, ark_bls12_381::Config>(good_sig0);
     }
 	 #[test]
 	 fn bls377_engine_bytes_test() {
 	    let mut keypair  = Keypair::<UsualBLS<Bls12_377, ark_bls12_377::Config>>::generate(thread_rng());
             let good_sig0 = keypair.signed_message(Message::new(b"ctx",b"test message"));
 
-	    bls_engine_bytes_test(good_sig0);
+	    bls_engine_serialization_test::<UsualBLS<Bls12_377, ark_bls12_377::Config>, Bls12_377, ark_bls12_377::Config>(good_sig0);
 	 }
-	
+
+    	 #[test]
+	 fn tiny_zbls_engine_bytes_test() {
+	    let mut keypair  = Keypair::<TinyBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
+            let good_sig0 = keypair.signed_message(Message::new(b"ctx",b"test message"));
+
+	    bls_engine_serialization_test::<TinyBLS<Bls12_381, ark_bls12_381::Config>, Bls12_381, ark_bls12_381::Config>(good_sig0);
+	 }
+    
+    	 #[test]
+	 fn tiny_bls377_engine_bytes_test() {
+	    let mut keypair  = Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(thread_rng());
+            let good_sig0 = keypair.signed_message(Message::new(b"ctx",b"test message"));
+
+	    bls_engine_serialization_test::<TinyBLS<Bls12_377, ark_bls12_377::Config>, Bls12_377, ark_bls12_377::Config>(good_sig0);
+	 }
+
     #[test]
     fn single_messages_zbls() {
         test_single_bls_message::<Bls12_381, ark_bls12_381::Config>();
