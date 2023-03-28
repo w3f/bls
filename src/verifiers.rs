@@ -181,7 +181,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(signed: &pop:
 
     let itr = signed.messages_and_publickeys();
     let l = {  let (lower, upper) = itr.size_hint();  upper.unwrap_or(lower)  };
-    let (first_message, first_public_key) =
+    let (_, first_public_key) =
         match signed.messages_and_publickeys().next() {
             Some((first_message, first_public_key)) => (first_message, first_public_key),
             None => return false,

@@ -31,18 +31,13 @@
 //! so that the `BitPoPSignedMessage` type provides a signature
 //! data type with reasonable sanity checks.
 
-// Aside about proof-of-possession in the DLOG setting
-// https://twitter.com/btcVeg/status/1085490561082183681
-
-use digest::Digest;
-
 use core::borrow::{Borrow}; // BorrowMut
 use std::collections::HashMap;
 
 use ark_ff::{Zero};
 
 use super::*;
-use super::verifiers::{verify_with_distinct_messages, verify_using_aggregated_auxiliary_public_keys};
+use super::verifiers::{verify_with_distinct_messages,};
 
 /// Batch or aggregate BLS signatures with attached messages and
 /// signers, for whom we previously checked proofs-of-possession.
@@ -73,31 +68,11 @@ use super::verifiers::{verify_with_distinct_messages, verify_using_aggregated_au
 /// the `ProofsOfPossession` trait tooling permits both enforce the
 /// proofs-of-possession and provide a compact serialization.
 /// We see no reason to support serialization for this type as present.
-//
-// In principle, one might combine proof-of-possession with distinct
-// message assumptions, or other aggregation strategies, when
-// verifiers have only observed a subset of the proofs-of-possession,
-// but this sounds complex or worse fragile.
-//
-// TODO: Implement gaussian elimination verification scheme.
-
-//TODO: shouldn't this go to Schnoor module?
+////TODO: shouldn't this go to Schnoor module?
 pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
 
 use single::{PublicKey};
-use double::{PublicKeyInSignatureGroup};
 /// ProofOfPossion trait which should be implemented by secret
-pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
-    /// The proof of possession generator is supposed to
-    /// to produce a schnoor signature of the publickey using
-    /// the secret key which it claim to possess.
-    fn generate_pok(&self) -> SchnorrProof<E>;
-}
-
-/// This should be implemented by public key
-pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
-    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
-}
 
 #[derive(Clone)]
 pub struct MultiMessageSignatureAggregatorAssumingPoP <E: EngineBLS> {

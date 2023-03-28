@@ -2,7 +2,7 @@
 //!
 
 use core::iter::once;
-use alloc::{vec, vec::Vec};
+use alloc::{vec::Vec};
 
 use ark_ec::{CurveGroup,AffineRepr,};
 
@@ -11,7 +11,6 @@ use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
 use sha2::Sha256;
 
 use crate::serialize::SerializableToBytes;
-#[macro_use]
 use crate::{broken_derives};
 use crate::single::{SecretKeyVT,KeypairVT,PublicKey,Keypair, Signature};
 use crate::schnorr_pop::SchnorrProof;

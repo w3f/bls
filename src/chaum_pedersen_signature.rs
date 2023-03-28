@@ -6,11 +6,9 @@ use digest::{Digest};
 
 use crate::{Message, SecretKeyVT};
 use crate::engine::EngineBLS;
-#[macro_use]
-use crate::broken_derives;
 use crate::serialize::SerializableToBytes;
-use crate::single::{Keypair, PublicKey, Signature,};
-use crate::double::{PublicKeyInSignatureGroup, DoublePublicKeyScheme};
+use crate::single::{Signature,};
+use crate::double::{PublicKeyInSignatureGroup, };
 use crate::schnorr_pop::SchnorrProof;
 
 pub type ChaumPedersenSignature<E> = (Signature<E>, SchnorrProof<E>);
@@ -39,6 +37,7 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E,H> for SecretKeyVT<E> {
         (bls_signature, <SecretKeyVT<E> as ChaumPedersenSigner<E, H>>::generate_dleq_proof(self, message, bls_signature.0))
     }
 
+    #[allow(non_snake_case)]
     fn generate_dleq_proof(&mut self, message: Message, bls_signature: E::SignatureGroup) -> SchnorrProof<E> {
         let mut k = <SecretKeyVT<E> as ChaumPedersenSigner<E, H>>::generate_witness_scaler(self, message);
 
@@ -64,7 +63,7 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E,H> for SecretKeyVT<E> {
     }
 
     fn generate_witness_scaler(&self, message: Message) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField {
-        let mut secret_key_as_bytes = self.to_bytes();
+        let secret_key_as_bytes = self.to_bytes();
                 
         let mut scalar_bytes = <H as Digest>::new().chain_update(secret_key_as_bytes).chain_update(message.0).finalize();
 	    let random_scalar : &mut [u8] = scalar_bytes.as_mut_slice();
@@ -75,12 +74,13 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E,H> for SecretKeyVT<E> {
 }
 
 /// This should be implemented by public key
+#[allow(non_snake_case)]
 impl<E: EngineBLS, H: Digest>  ChaumPedersenVerifier<E, H> for PublicKeyInSignatureGroup<E> { 
     fn verify_cp_signature(&self, message: Message, signature_proof: ChaumPedersenSignature<E>) -> bool {
-        let mut A_check_point = <<E as EngineBLS>::SignatureGroup as Group>::generator() * signature_proof.1.1 +
+        let A_check_point = <<E as EngineBLS>::SignatureGroup as Group>::generator() * signature_proof.1.1 +
             self.0 * signature_proof.1.0;
 
-        let mut B_check_point = message.hash_to_signature_curve::<E>() * signature_proof.1.1 +
+        let B_check_point = message.hash_to_signature_curve::<E>() * signature_proof.1.1 +
             signature_proof.0.0 * signature_proof.1.0;
 
 	let A_point_as_bytes = E::signature_point_to_byte(&A_check_point);

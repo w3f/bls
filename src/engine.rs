@@ -364,4 +364,7 @@ impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P> where <P as Bls12Co
 
 }
 
+/// Aggregate BLS signature scheme with Signature in G1 for BLS12-377 curve.
 pub type TinyBLS377 = TinyBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Config>;
+/// Aggregate BLS signature scheme with Signature in G1 for BLS12-381 curve.
+pub type TinyBLS381 = TinyBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Config>;

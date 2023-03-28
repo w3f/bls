@@ -567,14 +567,12 @@ impl<E: EngineBLS> Keypair<E> {
 
     /// Sign a message using a Seedabale RNG created from a seed derived from the message and key
     pub fn sign(&mut self, message: Message) -> Signature<E> {
-        let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
-
 	let mut serialized_part1 = [0u8; 32];
         let mut serialized_part2 = [0u8; 32]; 
         self.secret.key[0].serialize_compressed(&mut serialized_part1[..]).unwrap();
         self.secret.key[1].serialize_compressed(&mut serialized_part2[..]).unwrap();
         
-        let mut seed_digest  = Sha256::new().chain_update(serialized_part1).chain_update(serialized_part2).chain_update(message.0);
+        let seed_digest  = Sha256::new().chain_update(serialized_part1).chain_update(serialized_part2).chain_update(message.0);
 
         let seed : [u8; 32] = seed_digest.finalize().into();
 

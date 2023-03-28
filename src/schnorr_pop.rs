@@ -8,21 +8,11 @@ use crate::single::{PublicKey,Keypair};
 
 use digest::{Digest};
 
-use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
-use ark_ec::{Group, CurveGroup};
+use ark_ec::{Group, };
 use ark_ff::{PrimeField};
 
-use crate::Message;
-
-//TODO: shouldn't this go to Schnoor module?
 pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
-
-// TODO: Delete after migration to secret key model
-// pub struct BLSSchnorrProof<E: EngineBLS> : trait B: {
-//     pub public_key : PublicKey<E>,
-//     pub proof_of_possession : SchnorrProof<E>,
 // }
-
 /// Generate Schnorr Signature for an arbitrary message using a key ment to use in BLS scheme
 trait BLSSchnorrPoPGenerator<E: EngineBLS, H: Digest> : ProofOfPossessionGenerator<E,H> {
     /// Produce a secret witness scalar `k`, aka nonce, from hash of
@@ -36,8 +26,8 @@ impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for Keypair<E>
     //The pseudo random witness is generated similar to eddsa witness
     //hash(secret_key|publick_key)
     fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField {
-        let mut secret_key_as_bytes = self.secret.to_bytes();
-        let mut public_key_as_bytes = <E as EngineBLS>::public_key_point_to_byte(&self.public.0);
+        let secret_key_as_bytes = self.secret.to_bytes();
+        let public_key_as_bytes = <E as EngineBLS>::public_key_point_to_byte(&self.public.0);
         
         let mut scalar_bytes = <H as Digest>::new().chain_update(secret_key_as_bytes).chain_update(public_key_as_bytes).finalize();
 
@@ -50,22 +40,7 @@ impl<E: EngineBLS, H: Digest> BLSSchnorrPoPGenerator<E,H> for Keypair<E>
 impl<E: EngineBLS, H: Digest> ProofOfPossessionGenerator<E,H> for Keypair<E> {
 
     //TODO: Message must be equal to public key. 
-    fn generate_pok(&self) -> SchnorrProof<E> {
-        //First we should figure out the base point in E, I think the secret key trait/struct knows about it.
-
-        //choose random scaler k
-        //For now we don't we just use a trick similar to Ed25519
-        //we use hash of concatination of hash the secret key and the public key
-
-        //schnorr equations
-
-        //R = rG.
-        //k = H(R|M)
-        //s = k*private_key + r
-        // publishing (s, R) verifying that (s*G = H(R|M)*Publickey + R => H(R|M)*Publickey + R - s*G = 0)
-        // so either we need to two into_affine and one curve addition or or two curve additions.
-        // instead we actually doing H(s*G - H(R|M)*Publickey|M) == H(R|M) == k
-        // avoiding one curve addition (or two field divisions) in expense of a hash.
+    fn generate_pok(&self) -> SchnorrProof<E> {        // instead we actually doing H(s*G - H(R|M)*Publickey|M) == H(R|M) == k        // avoiding one curve addition (or two field divisions) in expense of a hash.
         let mut r = <dyn BLSSchnorrPoPGenerator<E,H>>::witness_scalar(self);
         
         let mut r_point = <<E as EngineBLS>::PublicKeyGroup as Group>::generator();
