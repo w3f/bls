@@ -81,12 +81,12 @@
 //!
 
 //#![feature(test)] needed for cargo bench
-
 #![cfg_attr(not(feature = "std"), no_std)]
 #[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
 
+#[cfg(feature = "std")]
 #[macro_use]
 extern crate arrayref;
 
@@ -146,7 +146,7 @@ type MessageDigest = [u8; MESSAGE_SIZE];
 /// Internal message hash type.  Short for frequent rehashing
 /// by `HashMap`, etc.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Message(pub MessageDigest, pub Vec<u8>);
+pub struct Message(pub MessageDigest, pub alloc::vec::Vec<u8>);
 
 impl Message {
     pub fn new(context: &'static [u8], message: &[u8]) -> Message {

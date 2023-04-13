@@ -7,14 +7,21 @@ use core::borrow::Borrow;
 #[cfg(feature = "std")]
 use std::collections::HashMap;
 
-use ark_ec::{AffineRepr, CurveGroup};
+#[cfg(feature = "std")]
+use ark_ec::{AffineRepr};
+#[cfg(feature = "std")]
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
+#[cfg(feature = "std")]
 use ark_serialize::CanonicalSerialize;
-
-use alloc::{vec, vec::Vec};
-
+#[cfg(feature = "std")]
 use digest::Digest;
+#[cfg(feature = "std")]
 use sha2::Sha256;
+
+use ark_ec::{CurveGroup};
+
+use alloc::{vec::Vec};
+
 
 use super::*;
 
