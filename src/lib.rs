@@ -1,21 +1,21 @@
-//! # Aggregate BLS signature library with extensive tuning options. 
-//! 
+//! # Aggregate BLS signature library with extensive tuning options.
+//!
 //! In short, anyone using BLS signatures should normally choose both
 //! an orientation as well as some aggregation and batching strategies
 //! These two decissions impact performance dramaticaly, but making
 //! the optimal choises requires some attentiom.  This crate employs
-//! convenient abstraction boundaries between curver arithmatic, 
+//! convenient abstraction boundaries between curver arithmatic,
 //! verifier routines, and aggregated and/or batched BLS signatures.
-//! 
+//!
 //! ### Pairings
-//! 
+//!
 //! If we have two elliptic curve with a pairing `e`, then
 //! a BLS signature `sigma = s*H(msg)` by a public key `S = s g1`
 //! can be verified with the one equation `e(g1,sigma) = e(S,H(msg))`.
 //! These simple BLS signatures are very slow to verify however
 //! because the pairing map `e` is far slower than many cryptographic
 //! primitives.
-//! 
+//!
 //! Our pairing `e` maps from a small curve over `F(q)` and a larger
 //! curve over `F(q^2)` into some multipliccative group if a field,
 //! normally over `F(q^12)`.  In principle, this map `e` into `F(q^12)`
@@ -30,10 +30,10 @@
 //! final exponentiation that happens in `F(q^12)`.  So our actual
 //! verification equation more resembles `e(-g1,sigma) e(S,H(msg)) = 1`.
 //!
-//! As one curve is smaller and hence faster, the user should choose 
+//! As one curve is smaller and hence faster, the user should choose
 //! which orientation of curves they prefer, meaning to which curve
 //! they hash, and which curves hold the signatues and public keys.
-//! In other words, your desired aggregation techniques and usage 
+//! In other words, your desired aggregation techniques and usage
 //! characteristics should determine if youp refer the verification
 //! equation `e(g1,sigma) = e(S,H(msg))` or the fliped form
 //! `e(sigma,g2) = e(H(msg),S)`.  See `UsualBLS` and `TinyBLS`.
@@ -55,17 +55,17 @@
 //! by values unforseeable to the signers.
 //! In general, linear techniques provide much better performance,
 //! but require stronger invariants be maintained by the caller,
-//! like messages being distinct, or limited signer sets with 
+//! like messages being distinct, or limited signer sets with
 //! proofs-of-possession.  Also, the delinearized techniques remain
 //! secure without tricky assumptions, but require more computation.
-//! 
+//!
 //! ### Verification
 //!
 //! We can often further reduce the pairings required in the
 //! verification equation, beyond the naieve information tracked
 //! by the aggregated signature itself.  Aggregated signature must
 //! state all the individual messages and/or public keys, but
-//! verifiers may collapse anything permitted. 
+//! verifiers may collapse anything permitted.
 //! We thus encounter aggregation-like decissions that impact
 //! verifier performance.
 //!
@@ -77,29 +77,29 @@
 //! outputs, but concievably small signer set sizes might make this
 //! a pessimization.
 //!
-//! 
+//!
 //!
 
 //#![feature(test)] needed for cargo bench
-
 #![cfg_attr(not(feature = "std"), no_std)]
 #[cfg_attr(feature = "std", doc = include_str!("../README.md"))]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
 
+#[cfg(feature = "std")]
 #[macro_use]
 extern crate arrayref;
 
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
-extern crate ark_ff;
 extern crate ark_ec;
-extern crate rand;
-extern crate rand_core;
-extern crate rand_chacha;
-extern crate sha3;
+extern crate ark_ff;
 extern crate digest;
+extern crate rand;
+extern crate rand_chacha;
+extern crate rand_core;
+extern crate sha3;
 
 extern crate alloc;
 
@@ -109,32 +109,32 @@ extern crate serde;
 use core::borrow::Borrow;
 use digest::Digest;
 
-pub mod serialize;
-pub mod engine;
-pub mod single;
-pub mod double;
-pub mod schnorr_pop;
-pub mod chaum_pedersen_signature;
-pub mod verifiers;
 #[cfg(feature = "std")]
-pub mod pop;
+pub mod bit;
+pub mod chaum_pedersen_signature;
+#[cfg(feature = "std")]
+pub mod delinear;
+#[cfg(feature = "std")]
+pub mod distinct;
+pub mod double;
+pub mod engine;
 #[cfg(feature = "std")]
 pub mod multi_pop_aggregator;
 #[cfg(feature = "std")]
-pub mod distinct;
-#[cfg(feature = "std")]
-pub mod bit;
-#[cfg(feature = "std")]
-pub mod delinear;
+pub mod pop;
+pub mod schnorr_pop;
+pub mod serialize;
+pub mod single;
+pub mod verifiers;
 
 pub use engine::*;
 
-pub use serialize::SerializableToBytes;
-pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage,};
-pub use double::{DoublePublicKey, DoublePublicKeyScheme, DoubleSignature};
 #[cfg(feature = "std")]
-pub use bit::{BitSignedMessage,CountSignedMessage};
+pub use bit::{BitSignedMessage, CountSignedMessage};
+pub use double::{DoublePublicKey, DoublePublicKeyScheme, DoubleSignature};
 pub use schnorr_pop::SchnorrProof;
+pub use serialize::SerializableToBytes;
+pub use single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signature, SignedMessage};
 
 /// Internal message hash size.  
 ///
@@ -142,14 +142,18 @@ pub use schnorr_pop::SchnorrProof;
 /// find messages with the same hash.
 const MESSAGE_SIZE: usize = 32;
 
+type MessageDigest = [u8; MESSAGE_SIZE];
 /// Internal message hash type.  Short for frequent rehashing
 /// by `HashMap`, etc.
-#[derive(Debug,Copy,Clone,Hash,PartialEq,Eq,PartialOrd,Ord)]
-pub struct Message(pub [u8; MESSAGE_SIZE]);
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Message(pub MessageDigest, pub alloc::vec::Vec<u8>);
 
 impl Message {
     pub fn new(context: &'static [u8], message: &[u8]) -> Message {
-        use sha3::{Shake128, digest::{Update, ExtendableOutput, XofReader}};
+        use sha3::{
+            digest::{ExtendableOutput, Update, XofReader},
+            Shake128,
+        };
         let mut h = Shake128::default();
         h.update(context);
         let l = message.len() as u64;
@@ -160,16 +164,18 @@ impl Message {
         let mut msg = [0u8; MESSAGE_SIZE];
         h.finalize_xof().read(&mut msg[..]);
         // t.challenge_bytes(b"", &mut msg);
-        Message(msg)
+        Message(msg, [context, message].concat())
     }
 
     pub fn hash_to_signature_curve<E: EngineBLS>(&self) -> E::SignatureGroup {
-        E::hash_to_signature_curve(&self.0[..])
+        E::hash_to_signature_curve(&self.1[..])
     }
 }
 
 impl<'a> From<&'a [u8]> for Message {
-    fn from(x: &[u8]) -> Message { Message::new(b"",x) }     
+    fn from(x: &[u8]) -> Message {
+        Message::new(b"", x)
+    }
 }
 
 /// Representation of an aggregated BLS signature.
@@ -185,21 +191,21 @@ impl<'a> From<&'a [u8]> for Message {
 pub trait Signed: Sized {
     type E: EngineBLS;
 
-    /// Return the aggregated signature 
+    /// Return the aggregated signature
     fn signature(&self) -> Signature<Self::E>;
 
     type M: Borrow<Message>; // = Message;
     type PKG: Borrow<PublicKey<Self::E>>; // = PublicKey<Self::E>;
 
     /// Iterator over, messages and public key reference pairs.
-    type PKnM: Iterator<Item = (Self::M,Self::PKG)> + ExactSizeIterator;
+    type PKnM: Iterator<Item = (Self::M, Self::PKG)> + ExactSizeIterator;
     // type PKnM<'a>: Iterator<Item = (
     //    &'a <<Self as Signed<'a>>::E as EngineBLS>::PublicKeyGroup,
     //    &'a Self::M,
     // )> + DoubleEndedIterator + ExactSizeIterator + 'a;
 
     /// Returns an iterator over messages and public key reference for
-    /// pairings, often only partially aggregated. 
+    /// pairings, often only partially aggregated.
     fn messages_and_publickeys(self) -> Self::PKnM;
     // fn messages_and_publickeys<'a>(&'s self) -> PKnM<'a>
     // -> impl Iterator<Item = (&'a Self::M, &'a Self::E::PublicKeyGroup)> + 'a;
@@ -210,7 +216,7 @@ pub trait Signed: Sized {
     /// it supports unstable `self.messages_and_publickeys()` securely
     /// by calling it only once, and does not expect pulic key points
     /// to be normalized, but this should usually be replaced by more
-    /// optimized variants. 
+    /// optimized variants.
     fn verify(self) -> bool {
         verifiers::verify_simple(self)
     }
@@ -225,7 +231,7 @@ pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
 }
 
 /// This should be implemented by public key
-pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> { 
+pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> {
     fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
 }
 
@@ -238,4 +244,3 @@ pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> {
 //     // #[test]
 //     // fn foo() { }
 // }
-
