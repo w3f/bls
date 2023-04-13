@@ -1,5 +1,14 @@
-//! ## Unaggreagated BLS signatures with double public key and DLEQ proof
+//! ## BLS key pair with public key in both G1 and G2
+//! ## Unaggreagated BLS signature along side with their DLEQ proof
 //!
+//! Implements schemes suggested the
+//! [paper](https://eprint.iacr.org/2022/1611)
+//!
+//! The scheme proposes for the public key be represented by doube points,
+//! both in G1 and G2 and aggregate keys in G1.
+//! 
+//! It also proposes that each individual BLS signature accompany a DLEQ proof
+//! for faster verification 
 
 use alloc::vec::Vec;
 use core::iter::once;

@@ -129,11 +129,12 @@ pub mod verifiers;
 
 pub use engine::*;
 
+pub use serialize::SerializableToBytes;
+pub use single::{PublicKey,KeypairVT,Keypair,SecretKeyVT,SecretKey,Signature, SignedMessage,};
+pub use double::{DoublePublicKey, DoublePublicKeyScheme, DoubleSignature};
 #[cfg(feature = "std")]
 pub use bit::{BitSignedMessage, CountSignedMessage};
 pub use schnorr_pop::SchnorrProof;
-pub use serialize::SerializableToBytes;
-pub use single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signature, SignedMessage};
 
 /// Internal message hash size.  
 ///
