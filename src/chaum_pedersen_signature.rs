@@ -74,7 +74,9 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E, H> for SecretKeyVT<E> {
 
         let signature_point_as_bytes = E::signature_point_to_byte(&signature_point);
         let message_point_as_bytes = E::signature_point_to_byte(&message_point);
-        let public_key_in_signature_group_as_bytes = E::signature_point_to_byte(&DoublePublicKeyScheme::<E>::into_public_key_in_signature_group(self).0);
+        let public_key_in_signature_group_as_bytes = E::signature_point_to_byte(
+            &DoublePublicKeyScheme::<E>::into_public_key_in_signature_group(self).0,
+        );
 
         let random_scalar = <H as Digest>::new()
             .chain_update(message_point_as_bytes)
@@ -130,7 +132,8 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenVerifier<E, H> for PublicKeyInSignatu
         let B_point_as_bytes = E::signature_point_to_byte(&B_check_point);
 
         let signature_point_as_bytes = signature_proof.0.to_bytes();
-        let message_point_as_bytes = E::signature_point_to_byte(&message.hash_to_signature_curve::<E>());
+        let message_point_as_bytes =
+            E::signature_point_to_byte(&message.hash_to_signature_curve::<E>());
         let public_key_in_signature_group_as_bytes = E::signature_point_to_byte(&self.0);
 
         let resulting_scalar = <H as Digest>::new()

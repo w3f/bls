@@ -6,9 +6,9 @@
 //!
 //! The scheme proposes for the public key be represented by doube points,
 //! both in G1 and G2 and aggregate keys in G1.
-//! 
+//!
 //! It also proposes that each individual BLS signature accompany a DLEQ proof
-//! for faster verification 
+//! for faster verification
 
 use alloc::vec::Vec;
 use core::iter::once;
