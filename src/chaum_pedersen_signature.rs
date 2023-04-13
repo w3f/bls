@@ -3,7 +3,7 @@ use ark_ff::PrimeField;
 
 use digest::Digest;
 
-use crate::double::PublicKeyInSignatureGroup;
+use crate::double::{DoublePublicKeyScheme, PublicKeyInSignatureGroup};
 use crate::engine::EngineBLS;
 use crate::schnorr_pop::SchnorrProof;
 use crate::serialize::SerializableToBytes;
@@ -73,11 +73,15 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E, H> for SecretKeyVT<E> {
         let B_point_as_bytes = E::signature_point_to_byte(&B_point);
 
         let signature_point_as_bytes = E::signature_point_to_byte(&signature_point);
+        let message_point_as_bytes = E::signature_point_to_byte(&message_point);
+        let public_key_in_signature_group_as_bytes = E::signature_point_to_byte(&DoublePublicKeyScheme::<E>::into_public_key_in_signature_group(self).0);
 
         let random_scalar = <H as Digest>::new()
+            .chain_update(message_point_as_bytes)
+            .chain_update(public_key_in_signature_group_as_bytes)
+            .chain_update(signature_point_as_bytes)
             .chain_update(A_point_as_bytes)
             .chain_update(B_point_as_bytes)
-            .chain_update(signature_point_as_bytes)
             .finalize();
 
         let c = <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(
@@ -126,11 +130,15 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenVerifier<E, H> for PublicKeyInSignatu
         let B_point_as_bytes = E::signature_point_to_byte(&B_check_point);
 
         let signature_point_as_bytes = signature_proof.0.to_bytes();
+        let message_point_as_bytes = E::signature_point_to_byte(&message.hash_to_signature_curve::<E>());
+        let public_key_in_signature_group_as_bytes = E::signature_point_to_byte(&self.0);
 
         let resulting_scalar = <H as Digest>::new()
+            .chain_update(message_point_as_bytes)
+            .chain_update(public_key_in_signature_group_as_bytes)
+            .chain_update(signature_point_as_bytes)
             .chain_update(A_point_as_bytes)
             .chain_update(B_point_as_bytes)
-            .chain_update(signature_point_as_bytes)
             .finalize();
         let c_check =
             <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(
