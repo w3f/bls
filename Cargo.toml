@@ -1,10 +1,10 @@
 [package]
 authors = ["Jack Grigg <str4d@i2pmail.org>", "Jeff Burdges <burdges@gnunet.org>", "Syed Hosseini <syed@riseup.net>"]
 description = "Aggregate BLS-like signatures"
-documentation = "https://docs.rs/bls-like"
+documentation = "https://docs.rs/w3f-bls"
 homepage = "https://github.com/w3f/bls"
 license = "MIT/Apache-2.0"
-name = "bls-like"
+name = "w3f-bls"
 repository = "https://github.com/w3f/bls"
 version = "0.1.0"
 edition = "2018"
