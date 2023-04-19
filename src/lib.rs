@@ -105,15 +105,15 @@ extern crate serde;
 use core::borrow::Borrow;
 use digest::Digest;
 
-pub mod engine;
-pub mod verifiers;
-pub mod serialize;
-pub mod single;
-pub mod schnorr_pop;
-pub mod pop;
-pub mod multi_pop_aggregator;
 pub mod chaum_pedersen_signature;
 pub mod double;
+pub mod engine;
+pub mod multi_pop_aggregator;
+pub mod pop;
+pub mod schnorr_pop;
+pub mod serialize;
+pub mod single;
+pub mod verifiers;
 
 #[cfg(feature = "experimental")]
 pub mod bit;
