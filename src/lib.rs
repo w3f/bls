@@ -108,12 +108,15 @@ use digest::Digest;
 pub mod chaum_pedersen_signature;
 pub mod double;
 pub mod engine;
-pub mod multi_pop_aggregator;
-pub mod pop;
 pub mod schnorr_pop;
 pub mod serialize;
 pub mod single;
 pub mod verifiers;
+
+#[cfg(feature = "std")]
+pub mod multi_pop_aggregator;
+#[cfg(feature = "std")]
+pub mod pop;
 
 #[cfg(feature = "experimental")]
 pub mod bit;

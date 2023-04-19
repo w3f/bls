@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use ark_ec::Group;
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 
