@@ -111,6 +111,7 @@ pub mod serialize;
 pub mod single;
 pub mod schnorr_pop;
 pub mod pop;
+pub mod multi_pop_aggregator;
 pub mod chaum_pedersen_signature;
 pub mod double;
 
@@ -120,8 +121,6 @@ pub mod bit;
 pub mod delinear;
 #[cfg(feature = "experimental")]
 pub mod distinct;
-#[cfg(feature = "experimental")]
-pub mod multi_pop_aggregator;
 
 pub use engine::*;
 
