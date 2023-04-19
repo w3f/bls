@@ -1,7 +1,7 @@
 use ark_ec::Group;
-use ark_ff::PrimeField;
+use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 
-use digest::Digest;
+use digest::DynDigest;
 
 use crate::double::{DoublePublicKeyScheme, PublicKeyInSignatureGroup};
 use crate::engine::EngineBLS;
@@ -13,7 +13,7 @@ use crate::{Message, SecretKeyVT};
 pub type ChaumPedersenSignature<E> = (Signature<E>, SchnorrProof<E>);
 
 /// ProofOfPossion trait which should be implemented by secret
-pub trait ChaumPedersenSigner<E: EngineBLS, H: Digest> {
+pub trait ChaumPedersenSigner<E: EngineBLS, H: DynDigest +Default + Clone> {
     /// The proof of possession generator is supposed to
     /// to produce a schnoor signature of the message using
     /// the secret key which it claim to possess.
@@ -32,7 +32,7 @@ pub trait ChaumPedersenSigner<E: EngineBLS, H: Digest> {
 }
 
 /// This should be implemented by public key
-pub trait ChaumPedersenVerifier<E: EngineBLS, H: Digest> {
+pub trait ChaumPedersenVerifier<E: EngineBLS, H: DynDigest +Default + Clone> {
     fn verify_cp_signature(
         &self,
         message: &Message,
@@ -40,7 +40,7 @@ pub trait ChaumPedersenVerifier<E: EngineBLS, H: Digest> {
     ) -> bool;
 }
 
-impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E, H> for SecretKeyVT<E> {
+impl<E: EngineBLS, H: DynDigest +Default + Clone> ChaumPedersenSigner<E, H> for SecretKeyVT<E> {
     fn generate_cp_signature(&mut self, message: &Message) -> ChaumPedersenSignature<E> {
         //First we generate a vanila BLS Signature;
         let bls_signature = SecretKeyVT::sign(self, message);
@@ -78,17 +78,17 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E, H> for SecretKeyVT<E> {
             &DoublePublicKeyScheme::<E>::into_public_key_in_signature_group(self).0,
         );
 
-        let random_scalar = <H as Digest>::new()
-            .chain_update(message_point_as_bytes)
-            .chain_update(public_key_in_signature_group_as_bytes)
-            .chain_update(signature_point_as_bytes)
-            .chain_update(A_point_as_bytes)
-            .chain_update(B_point_as_bytes)
-            .finalize();
+        let proof_basis = [
+	    message_point_as_bytes,
+            public_key_in_signature_group_as_bytes,
+            signature_point_as_bytes,
+            A_point_as_bytes,
+            B_point_as_bytes,
+	    ].concat();
 
-        let c = <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(
-            &*random_scalar,
-        );
+	let hasher = <DefaultFieldHasher<H> as HashToField<<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>>::new(&[]);
+
+        let c = hasher.hash_to_field(proof_basis.as_slice(), 1)[0];
         let s = k - c * self.0;
 
         ::zeroize::Zeroize::zeroize(&mut k); //clear secret witness from memory
@@ -102,20 +102,19 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenSigner<E, H> for SecretKeyVT<E> {
     ) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField {
         let secret_key_as_bytes = self.to_bytes();
 
-        let mut scalar_bytes = <H as Digest>::new()
-            .chain_update(secret_key_as_bytes)
-            .chain_update(message.0)
-            .finalize();
-        let random_scalar: &mut [u8] = scalar_bytes.as_mut_slice();
-        <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(
-            &*random_scalar,
-        )
+	let hasher = <DefaultFieldHasher<H> as HashToField<<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>>::new(&[]);
+
+        let scalar_seed = [
+            secret_key_as_bytes,
+            message.1.clone(),
+        ].concat();
+	hasher.hash_to_field(scalar_seed.as_slice(), 1)[0]        
     }
 }
 
 /// This should be implemented by public key
 #[allow(non_snake_case)]
-impl<E: EngineBLS, H: Digest> ChaumPedersenVerifier<E, H> for PublicKeyInSignatureGroup<E> {
+impl<E: EngineBLS, H: DynDigest +Default + Clone> ChaumPedersenVerifier<E, H> for PublicKeyInSignatureGroup<E> {
     fn verify_cp_signature(
         &self,
         message: &Message,
@@ -136,18 +135,17 @@ impl<E: EngineBLS, H: Digest> ChaumPedersenVerifier<E, H> for PublicKeyInSignatu
             E::signature_point_to_byte(&message.hash_to_signature_curve::<E>());
         let public_key_in_signature_group_as_bytes = E::signature_point_to_byte(&self.0);
 
-        let resulting_scalar = <H as Digest>::new()
-            .chain_update(message_point_as_bytes)
-            .chain_update(public_key_in_signature_group_as_bytes)
-            .chain_update(signature_point_as_bytes)
-            .chain_update(A_point_as_bytes)
-            .chain_update(B_point_as_bytes)
-            .finalize();
-        let c_check =
-            <<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>::from_be_bytes_mod_order(
-                &*resulting_scalar,
-            );
+        let resulting_proof_basis =  [
+	    message_point_as_bytes,
+            public_key_in_signature_group_as_bytes,
+            signature_point_as_bytes,
+            A_point_as_bytes,
+            B_point_as_bytes,
+	    ].concat();
 
+	let hasher = <DefaultFieldHasher<H> as HashToField<<<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField>>::new(&[]);
+        let c_check : <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField =  hasher.hash_to_field(resulting_proof_basis.as_slice(), 1)[0];
+	
         c_check == signature_proof.1 .0
     }
 }
