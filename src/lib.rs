@@ -86,10 +86,6 @@
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
 
-#[cfg(feature = "std")]
-#[macro_use]
-extern crate arrayref;
-
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
@@ -109,28 +105,25 @@ extern crate serde;
 use core::borrow::Borrow;
 use digest::Digest;
 
-#[cfg(feature = "std")]
-pub mod bit;
 pub mod chaum_pedersen_signature;
-#[cfg(feature = "std")]
-pub mod delinear;
-#[cfg(feature = "std")]
-pub mod distinct;
 pub mod double;
 pub mod engine;
-#[cfg(feature = "std")]
 pub mod multi_pop_aggregator;
-#[cfg(feature = "std")]
 pub mod pop;
 pub mod schnorr_pop;
 pub mod serialize;
 pub mod single;
 pub mod verifiers;
 
+#[cfg(feature = "experimental")]
+pub mod bit;
+#[cfg(feature = "experimental")]
+pub mod delinear;
+#[cfg(feature = "experimental")]
+pub mod distinct;
+
 pub use engine::*;
 
-#[cfg(feature = "std")]
-pub use bit::{BitSignedMessage, CountSignedMessage};
 pub use double::{DoublePublicKey, DoublePublicKeyScheme, DoubleSignature};
 pub use schnorr_pop::SchnorrProof;
 pub use serialize::SerializableToBytes;

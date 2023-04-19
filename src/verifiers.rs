@@ -8,7 +8,7 @@ use core::borrow::Borrow;
 use std::collections::HashMap;
 
 #[cfg(feature = "std")]
-use ark_ec::{AffineRepr};
+use ark_ec::AffineRepr;
 #[cfg(feature = "std")]
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 #[cfg(feature = "std")]
@@ -18,10 +18,9 @@ use digest::Digest;
 #[cfg(feature = "std")]
 use sha2::Sha256;
 
-use ark_ec::{CurveGroup};
+use ark_ec::CurveGroup;
 
-use alloc::{vec::Vec};
-
+use alloc::vec::Vec;
 
 use super::*;
 
