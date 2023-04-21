@@ -1,5 +1,9 @@
 use w3f_bls::{distinct::DistinctMessages, Keypair, Message, Signed, ZBLS};
 
+/// Run using
+/// ```sh
+/// cargo run --features "experimental" --example aggregated
+/// ```
 fn main() {
     let mut keypairs = [
         Keypair::<ZBLS>::generate(::rand::thread_rng()),
@@ -20,7 +24,7 @@ fn main() {
         .map(|(m, k)| k.signed_message(m))
         .collect::<Vec<_>>();
 
-    let mut dms = sigs
+    let dms = sigs
         .iter()
         .try_fold(DistinctMessages::<ZBLS>::new(), |dm, sig| dm.add(sig))
         .unwrap();
