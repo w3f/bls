@@ -198,6 +198,11 @@ pub trait EngineBLS {
     /// Prepared negative of the generator of the public key curve.
     fn minus_generator_of_public_key_group_prepared() -> Self::PublicKeyPrepared;
 
+    /// return the generator of signature group
+    fn generator_of_signature_group() -> Self::SignatureGroup {
+        <Self::SignatureGroup as CurveGroup>::Affine::generator().into()
+    }
+
     /// Process the public key to be use in pairing. This has to be
     /// implemented by the type of BLS system implementing the engine
     /// by calling either prepare_g1 or prepare_g2 based on which group
