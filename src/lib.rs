@@ -117,7 +117,7 @@ pub mod verifiers;
 #[cfg(feature = "std")]
 pub mod multi_pop_aggregator;
 #[cfg(feature = "std")]
-pub mod pop;
+pub mod single_pop_aggregator;
 
 #[cfg(feature = "experimental")]
 pub mod bit;

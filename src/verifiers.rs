@@ -14,9 +14,7 @@ use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 #[cfg(feature = "std")]
 use ark_serialize::CanonicalSerialize;
 #[cfg(feature = "std")]
-use digest::Digest;
-#[cfg(feature = "std")]
-use sha2::Sha256;
+use digest::DynDigest;
 
 use ark_ec::CurveGroup;
 
@@ -204,8 +202,11 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// they are provided by algerbaic operaations, but this sounds
 /// unlikely given our requirement that messages be distinct.
 #[cfg(feature = "std")]
-pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(
-    signed: &pop::SignatureAggregatorAssumingPoP<E>,
+pub fn verify_using_aggregated_auxiliary_public_keys<
+    E: EngineBLS,
+    H: DynDigest + Default + Clone,
+>(
+    signed: &single_pop_aggregator::SignatureAggregatorAssumingPoP<E>,
     normalize_public_keys: bool,
     aggregated_aux_pub_key: <E as EngineBLS>::SignatureGroup,
 ) -> bool {
@@ -221,7 +222,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(
         let (lower, upper) = itr.size_hint();
         upper.unwrap_or(lower)
     };
-    let (_, first_public_key) = match signed.messages_and_publickeys().next() {
+    let (first_message, first_public_key) = match signed.messages_and_publickeys().next() {
         Some((first_message, first_public_key)) => (first_message, first_public_key),
         None => return false,
     };
@@ -230,6 +231,9 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(
     first_public_key
         .serialize_compressed(&mut first_public_key_as_bytes[..])
         .expect("compressed size has been alocated");
+
+    let first_message_point = first_message.hash_to_signature_curve::<E>();
+    let first_message_point_as_bytes = E::signature_point_to_byte(&first_message_point);
 
     let mut aggregated_aux_pub_key_as_bytes = vec![0; aggregated_aux_pub_key.compressed_size()];
     aggregated_aux_pub_key
@@ -245,13 +249,15 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(
     // deterministic randomness for adding aggregated auxiliary pub keys
     //TODO you can't just assume that there is one pubickey you need to stop if they were more or aggregate them
 
-    let pseudo_random_scalar_seed: [u8; 32] = Sha256::new()
-        .chain_update(signature_as_bytes)
-        .chain_update(first_public_key_as_bytes)
-        .chain_update(aggregated_aux_pub_key_as_bytes)
-        .finalize()
-        .into();
-    let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
+    let pseudo_random_scalar_seed = [
+        first_message_point_as_bytes,
+        first_public_key_as_bytes,
+        aggregated_aux_pub_key_as_bytes,
+        signature_as_bytes,
+    ]
+    .concat();
+
+    let hasher = <DefaultFieldHasher<H> as HashToField<E::Scalar>>::new(&[]);
     let pseudo_random_scalar: E::Scalar =
         hasher.hash_to_field(&pseudo_random_scalar_seed[..], 1)[0];
 
@@ -259,6 +265,8 @@ pub fn verify_using_aggregated_auxiliary_public_keys<E: EngineBLS>(
 
     let mut publickeys = Vec::with_capacity(l);
     let mut messages = Vec::with_capacity(l + 1);
+
+    //Simplify from here on.
     for (m, pk) in itr {
         publickeys.push(pk.borrow().0.clone());
         messages.push(
