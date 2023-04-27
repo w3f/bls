@@ -147,7 +147,7 @@ type MessageDigest = [u8; MESSAGE_SIZE];
 pub struct Message(pub MessageDigest, pub alloc::vec::Vec<u8>);
 
 impl Message {
-    pub fn new(context: &'static [u8], message: &[u8]) -> Message {
+    pub fn new(context: &[u8], message: &[u8]) -> Message {
         use sha3::{
             digest::{ExtendableOutput, Update, XofReader},
             Shake128,
@@ -225,6 +225,7 @@ where
     E: EngineBLS,
     H: DynDigest + Default + Clone,
 {
+    const POP_DOMAIN_SEPARATION_TAG: &'static [u8];
     fn verify(&self, public_key_of_prover: &PV) -> bool;
 }
 

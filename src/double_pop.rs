@@ -1,5 +1,8 @@
 //! ## Implementation of ProofofPossion trait for Double BLS public keys using
-//! scheme describe in [https://eprint.iacr.org/2022/1611]
+//! the scheme described in [https://eprint.iacr.org/2022/1611] which also
+//! complies with the proof of possession proposed in
+//! [draft-irtf-cfrg-bls-signature-05](https://www.ietf.org/archive/id/draft-irtf-cfrg-bls-signature-05.html)
+
 use crate::engine::EngineBLS;
 use crate::{Message, ProofOfPossession, ProofOfPossessionGenerator};
 
@@ -7,16 +10,32 @@ use crate::double::DoublePublicKey;
 use crate::serialize::SerializableToBytes;
 use crate::single::Keypair;
 
+use alloc::vec::Vec;
+use constcat;
 use digest::DynDigest;
 
 use ark_ec::Group;
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 
-const PROOF_OF_POSSESSION_CONTEXT: &[u8] = b"BLSPoP";
+const PROOF_OF_POSSESSION_CONTEXT: &'static [u8] = b"POP_";
+const BLS_CONTEXT: &'static [u8] = b"BLS_";
 
 /// Proof Of Possession of the secret key as the secret scaler genarting both public
 /// keys in G1 and G2 by generating a BLS Signature of public key (in G2)
 pub struct BLSPoP<E: EngineBLS>(pub E::SignatureGroup);
+
+impl<E: EngineBLS> BLSPoP<E> {
+    fn bls_pop_context<H: DynDigest + Default + Clone>() -> Vec<u8> {
+        [
+            <BLSPoP<E> as ProofOfPossession<E, H, DoublePublicKey<E>>>::POP_DOMAIN_SEPARATION_TAG,
+            E::CURVE_NAME,
+            E::SIG_GROUP_NAME,
+            E::CIPHER_SUIT_DOMAIN_SEPARATION,
+            PROOF_OF_POSSESSION_CONTEXT,
+        ]
+        .concat()
+    }
+}
 
 //The bls proof of possession for single or double public key schemes are the same
 impl<E: EngineBLS, H: DynDigest + Default + Clone>
@@ -26,7 +45,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
         //We simply classicaly BLS sign public key in G2 based on https://eprint.iacr.org/2022/1611
         let public_key_as_bytes = self.public.to_bytes();
         let sigma_pop = self.sign(&Message::new(
-            PROOF_OF_POSSESSION_CONTEXT,
+            <BLSPoP<E>>::bls_pop_context::<H>().as_slice(),
             &public_key_as_bytes.as_slice(),
         ));
 
@@ -39,9 +58,14 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
 impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, DoublePublicKey<E>>
     for BLSPoP<E>
 {
+    const POP_DOMAIN_SEPARATION_TAG: &'static [u8] =
+        constcat::concat_bytes!(BLS_CONTEXT, PROOF_OF_POSSESSION_CONTEXT,);
+    //can't constcat generic parameter trait's const :-(
+    //E::CURVE_NAME, E::SIG_GROUP_NAME, E::CIPHER_SUIT_DOMAIN_SEPARATION,
+    // will do in runtime.
     /// verify the validity of PoP by performing the following Pairing
     /// e(H_pop(pk_2) + t.g_1, pk_2) = e(sign(H_pop(pk_2))+ t.pk_1, g_2)
-    /// we verifying by calling the verify_prepared function from the
+    /// we verifying by calling the verify_prepared ⎈function from the
     /// engine.
     fn verify(&self, public_key_of_prover: &DoublePublicKey<E>) -> bool {
         //First we need to generate our randomness in a way that
@@ -53,9 +77,11 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
         let public_key_in_signature_group_as_bytes =
             E::signature_point_to_byte(&public_key_in_signature_group);
 
-        let public_key_hashed_to_signature_group =
-            Message::new(PROOF_OF_POSSESSION_CONTEXT, &public_key_as_bytes)
-                .hash_to_signature_curve::<E>();
+        let public_key_hashed_to_signature_group = Message::new(
+            <BLSPoP<E>>::bls_pop_context::<H>().as_slice(),
+            &public_key_as_bytes,
+        )
+        .hash_to_signature_curve::<E>();
         let public_key_hashed_to_signature_group_as_bytes =
             E::signature_point_to_byte(&public_key_hashed_to_signature_group);
         let random_oracle_seed = [

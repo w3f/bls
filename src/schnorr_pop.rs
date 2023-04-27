@@ -9,6 +9,7 @@ use crate::{ProofOfPossession, ProofOfPossessionGenerator};
 use crate::serialize::SerializableToBytes;
 use crate::single::{Keypair, PublicKey};
 
+use alloc::vec::Vec;
 use digest::DynDigest;
 
 use ark_ec::Group;
@@ -99,6 +100,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
 impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, PublicKey<E>>
     for SchnorrPoP<E>
 {
+    const POP_DOMAIN_SEPARATION_TAG: &'static [u8] = b"SCHNORR_POP_XMD:SHA-256_RO_POP_";
     /// verify the validity of schnoor proof for a given publick key by
     /// making sure this is equal to zero
     /// H(+s*G - k*Publkey|M) ==  k  
