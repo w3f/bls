@@ -29,15 +29,14 @@ ark-bls12-377 = { version = "0.4.0", default-features = false, features = [ "cur
 zeroize = { version = "1.0", default-features = false, features = [ "zeroize_derive" ] }
 serde = { version = "1.0", default-features = false, optional = true }
 thiserror = { version = "1.0", default-features = false }
+constcat = "0.3.0"
 
 [dev-dependencies]
 hex-literal = "0.3.4"
 
 [features]
 default = ["std"]
-std = [
-    "rand/std"
-]
+std = ["rand/std"]
 experimental = []
 
 [patch.crates-io]
