@@ -128,7 +128,9 @@ pub mod distinct;
 
 pub use engine::*;
 
-pub use double::{DoublePublicKey, DoublePublicKeyScheme, DoubleSignature};
+pub use double::{
+    DoublePublicKey, DoublePublicKeyScheme, DoubleSignature, PublicKeyInSignatureGroup,
+};
 pub use double_pop::BLSPoP;
 pub use schnorr_pop::SchnorrProof;
 pub use serialize::SerializableToBytes;

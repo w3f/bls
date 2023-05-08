@@ -270,7 +270,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
     for (m, pk) in itr {
         publickeys.push(pk.borrow().0.clone());
         messages.push(
-            m.borrow().hash_to_signature_curve::<E>()
+            m.hash_to_signature_curve::<E>()
                 + E::SignatureGroupAffine::generator() * pseudo_random_scalar,
         );
     }

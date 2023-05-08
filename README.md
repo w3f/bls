@@ -83,30 +83,77 @@ The library offers method for generating and verifying proof of positions both b
 use w3f_bls::{Keypair,PublicKey,ZBLS,Message,Signed, ProofOfPossessionGenerator, ProofOfPossession, schnorr_pop::{SchnorrPoP}, multi_pop_aggregator::MultiMessageSignatureAggregatorAssumingPoP};
 use sha2::Sha256;
 
-fn main() {
-    let mut keypairs = [Keypair::<ZBLS>::generate(::rand::thread_rng()), Keypair::<ZBLS>::generate(::rand::thread_rng())];
-    let msgs = ["The ships", "hung in the sky", "in much the same way", "that bricks don’t."].iter().map(|m| Message::new(b"Some context", m.as_bytes())).collect::<Vec<_>>();
-    let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(m)).collect::<Vec<_>>();
+let mut keypairs = [Keypair::<ZBLS>::generate(::rand::thread_rng()), Keypair::<ZBLS>::generate(::rand::thread_rng())];
+let msgs = ["The ships", "hung in the sky", "in much the same way", "that bricks don’t."].iter().map(|m| Message::new(b"Some context", m.as_bytes())).collect::<Vec<_>>();
+let sigs = msgs.iter().zip(keypairs.iter_mut()).map(|(m,k)| k.sign(m)).collect::<Vec<_>>();
 
-    let publickeys = keypairs.iter().map(|k|k.public.clone()).collect::<Vec<_>>();
-    let pops = keypairs.iter_mut().map(|k|(ProofOfPossessionGenerator::<ZBLS, Sha256, PublicKey<ZBLS>, SchnorrPoP<ZBLS>>::generate_pok(k))).collect::<Vec<_>>();
+let publickeys = keypairs.iter().map(|k|k.public.clone()).collect::<Vec<_>>();
+let pops = keypairs.iter_mut().map(|k|(ProofOfPossessionGenerator::<ZBLS, Sha256, PublicKey<ZBLS>, SchnorrPoP<ZBLS>>::generate_pok(k))).collect::<Vec<_>>();
 
 //first make sure public keys have valid pop
-    let publickeys = publickeys.iter().zip(pops.iter()).map(|(publickey, pop) | {assert!(ProofOfPossession::<ZBLS, Sha256, PublicKey<ZBLS>>::verify(pop,publickey)); publickey}).collect::<Vec<_>>();
+let publickeys = publickeys.iter().zip(pops.iter()).map(|(publickey, pop) | {assert!(ProofOfPossession::<ZBLS, Sha256, PublicKey<ZBLS>>::verify(pop,publickey)); publickey}).collect::<Vec<_>>();
 
-    let batch_poped = msgs.iter().zip(publickeys).zip(sigs).fold(
+let batch_poped = msgs.iter().zip(publickeys).zip(sigs).fold(
     MultiMessageSignatureAggregatorAssumingPoP::<ZBLS>::new(),
     |mut bpop,((message, publickey),sig)| { bpop.add_message_n_publickey(message, &publickey); bpop.add_signature(&sig); bpop }
 );
-    assert!(batch_poped.verify())
-}
+assert!(batch_poped.verify())
 ```
 
 If you lack proofs-of-possesion, then delinearized approaches are provided in the `delinear` module, but such schemes might require a more customised approach. However, note that currently only aggeration assuming proof of possession is maintained and the other strategies are experimental. 
 
 ### Efficient Aggregatable BLS Signatures with Chaum-Pedersen Proofs
 
-The scheme introduced in [`our recent paper`](https://eprint.iacr.org/2022/1611) is implemented in [`chaum_pederson_signature.rs`](src/chaum_pederson_signature.rs) using `ChaumPedersonSigner` and `ChaumPedersonVerifier` traits and in [`pop.rs`](src/pop.rs) using `add_auxiliary_public_key` and `verify_using_aggregated_auxiliary_public_keys` functions. See benchmark tests for more how to use this scheme.
+The scheme introduced in [`our recent paper`](https://eprint.iacr.org/2022/1611) is implemented in [`chaum_pederson_signature.rs`](src/chaum_pederson_signature.rs) using `ChaumPedersonSigner` and `ChaumPedersonVerifier` traits and in [`pop.rs`](src/pop.rs) using `add_auxiliary_public_key` and `verify_using_aggregated_auxiliary_public_keys` functions which is demonestrated in the following example:
+```rust
+use sha2::Sha256;
+use ark_bls12_377::Bls12_377;
+use ark_ff::Zero;
+use rand::thread_rng;
+
+use w3f_bls::{
+    single_pop_aggregator::SignatureAggregatorAssumingPoP, DoublePublicKeyScheme, EngineBLS, Keypair, Message, PublicKey, PublicKeyInSignatureGroup, Signed, TinyBLS, TinyBLS377,
+};
+
+
+let message = Message::new(b"ctx", b"I'd far rather be happy than right any day.");
+let mut keypairs: Vec<_> = (0..3)
+    .into_iter()
+    .map(|_| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(thread_rng()))
+    .collect();
+let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
+    .iter()
+    .map(|k| k.into_public_key_in_signature_group())
+    .collect();
+
+let mut prover_aggregator =
+    SignatureAggregatorAssumingPoP::<TinyBLS377>::new(message.clone());
+let mut aggregated_public_key =
+    PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
+
+//sign and aggegate
+let _ = keypairs
+    .iter_mut()
+    .map(|k| {
+        prover_aggregator.add_signature(&k.sign(&message));
+        aggregated_public_key.0 += k.public.0;
+    })
+    .count();
+
+let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new(message);
+
+verifier_aggregator.add_signature(&(&prover_aggregator).signature());
+
+//aggregate public keys in signature group
+verifier_aggregator.add_publickey(&aggregated_public_key);
+
+pub_keys_in_sig_grp.iter().for_each(|pk| {verifier_aggregator.add_auxiliary_public_key(pk);});
+
+assert!(
+    verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+    "verifying with honest auxilary public key should pass"
+);
+```
 
 ### Hash to Curve
 
