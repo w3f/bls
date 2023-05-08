@@ -37,6 +37,7 @@ hex-literal = "0.3.4"
 [features]
 default = ["std"]
 std = ["rand/std"]
+experimental = []
 
 [patch.crates-io]
 # ark-ec = { git = "https://github.com/w3f/arkworks-algebra", branch = 'master'}
