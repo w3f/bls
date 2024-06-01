@@ -41,6 +41,8 @@ use super::verifiers::{
 };
 use super::*;
 
+use digest::DynDigest;
+
 /// Batch or aggregate BLS signatures with attached messages and
 /// signers, for whom we previously checked proofs-of-possession.
 ///
@@ -145,8 +147,12 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
     //     self.add_signature(&signature);
     // }
 
-    pub fn verify_using_aggregated_auxiliary_public_keys(&self) -> bool {
-        verify_using_aggregated_auxiliary_public_keys(
+    pub fn verify_using_aggregated_auxiliary_public_keys<
+        RandomOracle: DynDigest + Default + Clone,
+    >(
+        &self,
+    ) -> bool {
+        verify_using_aggregated_auxiliary_public_keys::<E, RandomOracle>(
             self,
             true,
             self.aggregated_auxiliary_public_key.0,
@@ -183,11 +189,15 @@ impl<'a, E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
 #[cfg(all(test, feature = "std"))]
 mod tests {
 
+    use crate::EngineBLS;
     use crate::Keypair;
     use crate::Message;
+    use crate::TinyBLS;
     use crate::UsualBLS;
     use rand::thread_rng;
+    use sha2::Sha256;
 
+    use ark_bls12_377::Bls12_377;
     use ark_bls12_381::Bls12_381;
 
     use super::*;
@@ -275,6 +285,50 @@ mod tests {
         assert!(
             aggregated_sigs.verify() == false,
             "aggregated signature of a wrong message should not verify"
+        );
+    }
+
+    #[test]
+    fn test_aggregate_tiny_sigs_and_verify_in_g1() {
+        let message = Message::new(b"ctx", b"test message");
+        let mut keypairs: Vec<_> = (0..3)
+            .into_iter()
+            .map(|_| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(thread_rng()))
+            .collect();
+        let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
+            .iter()
+            .map(|k| k.into_public_key_in_signature_group())
+            .collect();
+
+        let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new(message.clone());
+        let mut aggregated_public_key =
+            PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
+
+        for k in &mut keypairs {
+            aggregator.add_signature(&k.sign(&message));
+            aggregated_public_key.0 += k.public.0;
+        }
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new(message);
+
+        verifier_aggregator.add_signature(&aggregator.signature);
+        verifier_aggregator.add_publickey(&aggregated_public_key);
+
+        for k in &pub_keys_in_sig_grp {
+            verifier_aggregator.add_auxiliary_public_key(k);
+        }
+
+        assert!(
+            verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifying with honest auxilary public key should pass"
+        );
+
+        //false aggregation in signature group should fails verification.
+        verifier_aggregator
+            .add_auxiliary_public_key(&keypairs[0].into_public_key_in_signature_group());
+        assert!(
+            !verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verification using non-matching auxilary public key should fail"
         );
     }
 }

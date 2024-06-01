@@ -92,6 +92,11 @@ pub trait EngineBLS {
     const PUBLICKEY_SERIALIZED_SIZE: usize;
     const SECRET_KEY_SIZE: usize;
 
+    // See https://www.ietf.org/archive/id/draft-irtf-cfrg-bls-signature-05.html#name-ciphersuites
+    const CURVE_NAME: &'static [u8];
+    const SIG_GROUP_NAME: &'static [u8];
+    const CIPHER_SUIT_DOMAIN_SEPARATION: &'static [u8];
+
     /// Group where BLS signatures live
     ///
     /// You should take this to be the `Engine::G2` curve usually
@@ -198,6 +203,11 @@ pub trait EngineBLS {
     /// Prepared negative of the generator of the public key curve.
     fn minus_generator_of_public_key_group_prepared() -> Self::PublicKeyPrepared;
 
+    /// return the generator of signature group
+    fn generator_of_signature_group() -> Self::SignatureGroup {
+        <Self::SignatureGroup as CurveGroup>::Affine::generator().into()
+    }
+
     /// Process the public key to be use in pairing. This has to be
     /// implemented by the type of BLS system implementing the engine
     /// by calling either prepare_g1 or prepare_g2 based on which group
@@ -250,12 +260,12 @@ pub type BLS377 = UsualBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Config>;
 /// scalar multiplications with delinearization.
 /// We also orient this variant to match zcash's traits.
 #[derive(Default)]
-pub struct UsualBLS<E: Pairing, P: Bls12Config>(pub E, PhantomData<fn() -> P>)
+pub struct UsualBLS<E: Pairing, P: Bls12Config + CurveExtraConfig>(pub E, PhantomData<fn() -> P>)
 where
     <P as Bls12Config>::G2Config: WBConfig,
     WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as Pairing>::G2>;
 
-impl<E: Pairing, P: Bls12Config> EngineBLS for UsualBLS<E, P>
+impl<E: Pairing, P: Bls12Config + CurveExtraConfig> EngineBLS for UsualBLS<E, P>
 where
     <P as Bls12Config>::G2Config: WBConfig,
     WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as Pairing>::G2>,
@@ -270,6 +280,10 @@ where
 
     const PUBLICKEY_SERIALIZED_SIZE: usize = 48;
     const SECRET_KEY_SIZE: usize = 32;
+
+    const CURVE_NAME: &'static [u8] = P::CURVE_NAME;
+    const SIG_GROUP_NAME: &'static [u8] = b"G2";
+    const CIPHER_SUIT_DOMAIN_SEPARATION: &'static [u8] = b"_XMD:SHA-256_SSWU_RO_";
 
     type SignatureGroup = E::G2;
     type SignatureGroupAffine = E::G2Affine;
@@ -331,12 +345,17 @@ where
 /// Yet, there are specific use cases where this variant performs
 /// better.  We swapy two group roles relative to zcash here.
 #[derive(Default)]
-pub struct TinyBLS<E: Pairing, P: Bls12Config>(pub E, PhantomData<fn() -> P>)
+pub struct TinyBLS<E: Pairing, P: Bls12Config + CurveExtraConfig>(pub E, PhantomData<fn() -> P>)
 where
     <P as Bls12Config>::G1Config: WBConfig,
     WBMap<<P as Bls12Config>::G1Config>: MapToCurve<<E as Pairing>::G1>;
 
-impl<E: Pairing, P: Bls12Config> EngineBLS for TinyBLS<E, P>
+/// Trait to add extra config for a curve which is not in ArkWorks library
+pub trait CurveExtraConfig {
+    const CURVE_NAME: &'static [u8];
+}
+
+impl<E: Pairing, P: Bls12Config + CurveExtraConfig> EngineBLS for TinyBLS<E, P>
 where
     <P as Bls12Config>::G1Config: WBConfig,
     WBMap<<P as Bls12Config>::G1Config>: MapToCurve<<E as Pairing>::G1>,
@@ -358,6 +377,10 @@ where
 
     const PUBLICKEY_SERIALIZED_SIZE: usize = 96;
     const SECRET_KEY_SIZE: usize = 32;
+
+    const CURVE_NAME: &'static [u8] = P::CURVE_NAME;
+    const SIG_GROUP_NAME: &'static [u8] = b"G1";
+    const CIPHER_SUIT_DOMAIN_SEPARATION: &'static [u8] = b"_XMD:SHA-256_SSWU_RO_";
 
     type HashToSignatureField = DefaultFieldHasher<Sha256, 128>;
     type MapToSignatureCurve = WBMap<P::G1Config>;
@@ -406,6 +429,12 @@ where
 }
 
 /// Aggregate BLS signature scheme with Signature in G1 for BLS12-377 curve.
+impl CurveExtraConfig for ark_bls12_377::Config {
+    const CURVE_NAME: &'static [u8] = b"BLS12377";
+}
 pub type TinyBLS377 = TinyBLS<ark_bls12_377::Bls12_377, ark_bls12_377::Config>;
 /// Aggregate BLS signature scheme with Signature in G1 for BLS12-381 curve.
+impl CurveExtraConfig for ark_bls12_381::Config {
+    const CURVE_NAME: &'static [u8] = b"BLS12381";
+}
 pub type TinyBLS381 = TinyBLS<ark_bls12_381::Bls12_381, ark_bls12_381::Config>;

@@ -16,6 +16,7 @@ use ark_ec::CurveGroup;
 use ark_ff::BigInteger;
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::CanonicalSerialize;
+use arrayref::array_refs;
 #[cfg(feature = "std")]
 use rand::thread_rng;
 use rand::Rng;

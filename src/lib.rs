@@ -86,10 +86,6 @@
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
 
-#[cfg(feature = "std")]
-#[macro_use]
-extern crate arrayref;
-
 extern crate ark_serialize;
 extern crate ark_serialize_derive;
 
@@ -107,31 +103,35 @@ extern crate alloc;
 extern crate serde;
 
 use core::borrow::Borrow;
-use digest::Digest;
+use digest::DynDigest;
 
-#[cfg(feature = "std")]
-pub mod bit;
 pub mod chaum_pedersen_signature;
-#[cfg(feature = "std")]
-pub mod delinear;
-#[cfg(feature = "std")]
-pub mod distinct;
 pub mod double;
+pub mod double_pop;
 pub mod engine;
-#[cfg(feature = "std")]
-pub mod multi_pop_aggregator;
-#[cfg(feature = "std")]
-pub mod pop;
 pub mod schnorr_pop;
 pub mod serialize;
 pub mod single;
 pub mod verifiers;
 
+#[cfg(feature = "std")]
+pub mod multi_pop_aggregator;
+#[cfg(feature = "std")]
+pub mod single_pop_aggregator;
+
+#[cfg(feature = "experimental")]
+pub mod bit;
+#[cfg(feature = "experimental")]
+pub mod delinear;
+#[cfg(feature = "experimental")]
+pub mod distinct;
+
 pub use engine::*;
 
-#[cfg(feature = "std")]
-pub use bit::{BitSignedMessage, CountSignedMessage};
-pub use double::{DoublePublicKey, DoublePublicKeyScheme, DoubleSignature};
+pub use double::{
+    DoublePublicKey, DoublePublicKeyScheme, DoubleSignature, PublicKeyInSignatureGroup,
+};
+pub use double_pop::BLSPoP;
 pub use schnorr_pop::SchnorrProof;
 pub use serialize::SerializableToBytes;
 pub use single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signature, SignedMessage};
@@ -149,7 +149,7 @@ type MessageDigest = [u8; MESSAGE_SIZE];
 pub struct Message(pub MessageDigest, pub alloc::vec::Vec<u8>);
 
 impl Message {
-    pub fn new(context: &'static [u8], message: &[u8]) -> Message {
+    pub fn new(context: &[u8], message: &[u8]) -> Message {
         use sha3::{
             digest::{ExtendableOutput, Update, XofReader},
             Shake128,
@@ -222,25 +222,26 @@ pub trait Signed: Sized {
     }
 }
 
+pub trait ProofOfPossession<E, H, PV>
+where
+    E: EngineBLS,
+    H: DynDigest + Default + Clone,
+{
+    const POP_DOMAIN_SEPARATION_TAG: &'static [u8];
+    fn verify(&self, public_key_of_prover: &PV) -> bool;
+}
+
 /// ProofOfPossion trait which should be implemented by secret
-pub trait ProofOfPossessionGenerator<E: EngineBLS, H: Digest> {
+pub trait ProofOfPossessionGenerator<
+    E: EngineBLS,
+    H: DynDigest + Default + Clone,
+    PV,
+    P: ProofOfPossession<E, H, PV>,
+>
+{
     /// The proof of possession generator is supposed to
-    /// to produce a schnoor signature of the publickey using
-    /// the secret key which it claim to possess.
-    fn generate_pok(&self) -> SchnorrProof<E>;
+    /// to produce a schnorr signature or a bls signature using
+    /// the secret key which it claims to possess. This proves that
+    /// that the secret key is known.
+    fn generate_pok(&mut self) -> P;
 }
-
-/// This should be implemented by public key
-pub trait ProofOfPossessionVerifier<E: EngineBLS, H: Digest> {
-    fn verify_pok(&self, schnorr_proof: SchnorrProof<E>) -> bool;
-}
-
-// #[cfg(test)]
-// mod tests {
-//     // use super::*;
-
-//     // use rand::{SeedableRng, XorShiftRng};
-
-//     // #[test]
-//     // fn foo() { }
-// }

@@ -766,12 +766,16 @@ mod tests {
     use ark_ec::pairing::Pairing as PairingEngine;
 
     use super::*;
-    use crate::{TinyBLS, UsualBLS};
+    use crate::{CurveExtraConfig, TinyBLS, UsualBLS};
 
     use core::convert::TryInto;
     use hex_literal::hex;
 
-    fn bls_engine_serialization_test<EB: EngineBLS<Engine = E>, E: PairingEngine, P: Bls12Config>(
+    fn bls_engine_serialization_test<
+        EB: EngineBLS<Engine = E>,
+        E: PairingEngine,
+        P: Bls12Config + CurveExtraConfig,
+    >(
         x: SignedMessage<EB>,
     ) -> SignedMessage<EB>
     where
@@ -797,7 +801,10 @@ mod tests {
     /// generates a random secret key sign a message and convert the
     /// key to bytes then reconvert it to key and derive its public key
     /// And check if the signature still verifies    
-    fn test_serialize_deserialize_production_secret_key<E: PairingEngine, P: Bls12Config>()
+    fn test_serialize_deserialize_production_secret_key<
+        E: PairingEngine,
+        P: Bls12Config + CurveExtraConfig,
+    >()
     where
         <P as Bls12Config>::G2Config: WBConfig,
         WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2>,
@@ -820,7 +827,10 @@ mod tests {
         assert!(sig.verify(&good_message, &reconstructed_public_key));
     }
 
-    fn test_deserialize_random_value_as_secret_key_fails<E: PairingEngine, P: Bls12Config>(
+    fn test_deserialize_random_value_as_secret_key_fails<
+        E: PairingEngine,
+        P: Bls12Config + CurveExtraConfig,
+    >(
         random_seed: &[u8],
     ) where
         <P as Bls12Config>::G2Config: WBConfig,
@@ -847,7 +857,7 @@ mod tests {
     //     assert!(SignedMessage { message, publickey, signature } == x);
     // }
 
-    fn test_single_bls_message<E: PairingEngine, P: Bls12Config>()
+    fn test_single_bls_message<E: PairingEngine, P: Bls12Config + CurveExtraConfig>()
     where
         <P as Bls12Config>::G2Config: WBConfig,
         WBMap<<P as Bls12Config>::G2Config>: MapToCurve<<E as PairingEngine>::G2>,
