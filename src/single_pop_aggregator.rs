@@ -128,7 +128,7 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
 
     /// Returns the aggergated public key.
     ///
-    pub fn aggergated_publickey(&self) -> PublicKey<E> {
+    pub fn aggregated_publickey(&self) -> PublicKey<E> {
         self.aggregated_publickey
     }
 
