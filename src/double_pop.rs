@@ -57,7 +57,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
 
 /// Serialization for DoublePublickey
 impl<E: EngineBLS> SerializableToBytes for BLSPoP<E> {
-    const SERIALIZED_BYTES_SIZE: usize = E::SIGNATURE_SERIALIZED_SIZE + 2 * E::SECRET_KEY_SIZE;
+    const SERIALIZED_BYTES_SIZE: usize = E::SIGNATURE_SERIALIZED_SIZE;
 }
 
 /// The verification process for verifying both possession of one secret key
