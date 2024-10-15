@@ -16,12 +16,14 @@ use digest::DynDigest;
 
 use ark_ec::Group;
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 const PROOF_OF_POSSESSION_CONTEXT: &'static [u8] = b"POP_";
 const BLS_CONTEXT: &'static [u8] = b"BLS_";
 
 /// Proof Of Possession of the secret key as the secret scaler genarting both public
 /// keys in G1 and G2 by generating a BLS Signature of public key (in G2)
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct BLSPoP<E: EngineBLS>(pub E::SignatureGroup);
 
 impl<E: EngineBLS> BLSPoP<E> {
@@ -51,6 +53,11 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
 
         BLSPoP::<E>(sigma_pop.0)
     }
+}
+
+/// Serialization for DoublePublickey
+impl<E: EngineBLS> SerializableToBytes for BLSPoP<E> {
+    const SERIALIZED_BYTES_SIZE: usize = E::SIGNATURE_SERIALIZED_SIZE + 2 * E::SECRET_KEY_SIZE;
 }
 
 /// The verification process for verifying both possession of one secret key
@@ -121,9 +128,12 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
 mod tests {
     use crate::double::DoublePublicKeyScheme;
     use crate::engine::ZBLS;
+    use crate::serialize::SerializableToBytes;
     use crate::single::Keypair;
     use crate::{double_pop::BLSPoP, DoublePublicKey};
-    use crate::{ProofOfPossession, ProofOfPossessionGenerator};
+    use crate::{ProofOfPossession, ProofOfPossessionGenerator, TinyBLS};
+
+    use ark_bls12_381::Bls12_381;
 
     use rand::thread_rng;
     use sha2::Sha256;
@@ -175,6 +185,36 @@ mod tests {
                 &DoublePublicKeyScheme::into_double_public_key(&keypair_bad)
             ),
             "invalid pok of unrelated public key should not verify"
+        );
+    }
+
+    #[test]
+    fn pop_of_a_double_public_key_should_serialize_and_deserialize_for_bls12_381() {
+        let mut keypair =
+            Keypair::<TinyBLS<Bls12_381, ark_bls12_381::Config>>::generate(thread_rng());
+
+        let proof_pair = <dyn ProofOfPossessionGenerator<
+            TinyBLS<Bls12_381, ark_bls12_381::Config>,
+            Sha256,
+            DoublePublicKey<TinyBLS<Bls12_381, ark_bls12_381::Config>>,
+            BLSPoP<TinyBLS<Bls12_381, ark_bls12_381::Config>>,
+        >>::generate_pok(&mut keypair);
+
+        let serialized_proof = proof_pair.to_bytes();
+        let deserialized_proof =
+            BLSPoP::<TinyBLS<Bls12_381, ark_bls12_381::Config>>::from_bytes(&serialized_proof)
+                .unwrap();
+
+        assert!(
+            ProofOfPossession::<
+                TinyBLS<Bls12_381, ark_bls12_381::Config>,
+                Sha256,
+                DoublePublicKey::<TinyBLS<Bls12_381, ark_bls12_381::Config>>,
+            >::verify(
+                &deserialized_proof,
+                &DoublePublicKeyScheme::into_double_public_key(&keypair)
+            ),
+            "valid pok does not verify"
         );
     }
 }
