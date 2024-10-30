@@ -6,7 +6,7 @@ homepage = "https://github.com/w3f/bls"
 license = "MIT/Apache-2.0"
 name = "w3f-bls"
 repository = "https://github.com/w3f/bls"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2018"
 
 [dependencies]
