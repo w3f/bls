@@ -11,33 +11,16 @@ use crate::serialize::SerializableToBytes;
 use crate::single::{Keypair, PublicKey};
 
 use alloc::vec::Vec;
-use constcat;
 use digest::DynDigest;
 
 use ark_ec::Group;
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-const PROOF_OF_POSSESSION_CONTEXT: &'static [u8] = b"POP_";
-const BLS_CONTEXT: &'static [u8] = b"BLS_";
-
 /// Proof Of Possession of the secret key as the secret scaler genarting both public
 /// keys in G1 and G2 by generating a BLS Signature of public key (in G2)
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct NuggetBLSPoP<E: EngineBLS>(pub E::SignatureGroup);
-
-impl<E: EngineBLS> NuggetBLSPoP<E> {
-    fn bls_pop_context<H: DynDigest + Default + Clone>() -> Vec<u8> {
-        [
-            <NuggetBLSPoP<E> as ProofOfPossession<E, H, DoublePublicKey<E>>>::POP_DOMAIN_SEPARATION_TAG,
-            E::CURVE_NAME,
-            E::SIG_GROUP_NAME,
-            E::CIPHER_SUIT_DOMAIN_SEPARATION,
-            PROOF_OF_POSSESSION_CONTEXT,
-        ]
-        .concat()
-    }
-}
 
 //The bls proof of possession for single or double public key schemes are the same
 impl<E: EngineBLS, H: DynDigest + Default + Clone>
@@ -60,11 +43,6 @@ impl<E: EngineBLS> SerializableToBytes for NuggetBLSPoP<E> {
 impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, DoublePublicKey<E>>
     for NuggetBLSPoP<E>
 {
-    const POP_DOMAIN_SEPARATION_TAG: &'static [u8] =
-        constcat::concat_bytes!(BLS_CONTEXT, PROOF_OF_POSSESSION_CONTEXT,);
-    //can't constcat generic parameter trait's const :-(
-    //E::CURVE_NAME, E::SIG_GROUP_NAME, E::CIPHER_SUIT_DOMAIN_SEPARATION,
-    // will do in runtime.
     /// verify the validity of PoP by performing the following Pairing
     /// e(H_pop(pk_2) + t.g_1, pk_2) = e(sign(H_pop(pk_2))+ t.pk_1, g_2)
     /// we verifying by calling the verify_prepared ⎈function from the
@@ -79,11 +57,8 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
         let public_key_in_signature_group_as_bytes =
             E::signature_point_to_byte(&public_key_in_signature_group);
 
-        let public_key_hashed_to_signature_group = Message::new(
-            <NuggetBLSPoP<E>>::bls_pop_context::<H>().as_slice(),
-            &public_key_as_bytes,
-        )
-        .hash_to_signature_curve::<E>();
+        let public_key_hashed_to_signature_group =
+            Message::new_pop_message(b"", &public_key_as_bytes).hash_to_signature_curve::<E>();
         let public_key_hashed_to_signature_group_as_bytes =
             E::signature_point_to_byte(&public_key_hashed_to_signature_group);
         let random_oracle_seed = [
@@ -134,10 +109,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
         let public_key_as_bytes = self.public.to_bytes();
         let sigma_pop = DoublePublicKeyScheme::<E>::sign(
             self,
-            &Message::new(
-                <NuggetBLSPoP<E>>::bls_pop_context::<H>().as_slice(),
-                &public_key_as_bytes.as_slice(),
-            ),
+            &Message::new_pop_message(b"", &public_key_as_bytes.as_slice()),
         );
 
         NuggetBLSnCPPoP::<E>(sigma_pop)
@@ -154,9 +126,6 @@ impl<E: EngineBLS> SerializableToBytes for NuggetBLSnCPPoP<E> {
 impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, DoublePublicKey<E>>
     for NuggetBLSnCPPoP<E>
 {
-    const POP_DOMAIN_SEPARATION_TAG: &'static [u8] =
-        constcat::concat_bytes!(BLS_CONTEXT, PROOF_OF_POSSESSION_CONTEXT,);
-
     /// verify the validity of PoP by verifying nugget PoP and the CP
     /// signature
     fn verify(&self, public_key_of_prover: &DoublePublicKey<E>) -> bool {
@@ -167,10 +136,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
             &NuggetBLSPoP::<E>(self.0 .0),
             public_key_of_prover,
         ) && public_key_of_prover.verify(
-            &Message::new(
-                <NuggetBLSPoP<E>>::bls_pop_context::<H>().as_slice(),
-                &public_key_in_public_key_group_as_bytes.as_slice(),
-            ),
+            &Message::new_pop_message(b"", &public_key_in_public_key_group_as_bytes.as_slice()),
             &self.0,
         )
     }
