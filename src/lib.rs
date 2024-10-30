@@ -131,7 +131,7 @@ pub use engine::*;
 pub use double::{
     DoublePublicKey, DoublePublicKeyScheme, DoubleSignature, PublicKeyInSignatureGroup,
 };
-pub use double_pop::BLSPoP;
+pub use double_pop::{NuggetBLSPoP, NuggetBLSnCPPoP};
 pub use schnorr_pop::SchnorrProof;
 pub use serialize::SerializableToBytes;
 pub use single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signature, SignedMessage};

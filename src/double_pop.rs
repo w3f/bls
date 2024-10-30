@@ -24,12 +24,12 @@ const BLS_CONTEXT: &'static [u8] = b"BLS_";
 /// Proof Of Possession of the secret key as the secret scaler genarting both public
 /// keys in G1 and G2 by generating a BLS Signature of public key (in G2)
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct BLSPoP<E: EngineBLS>(pub E::SignatureGroup);
+pub struct NuggetBLSPoP<E: EngineBLS>(pub E::SignatureGroup);
 
-impl<E: EngineBLS> BLSPoP<E> {
+impl<E: EngineBLS> NuggetBLSPoP<E> {
     fn bls_pop_context<H: DynDigest + Default + Clone>() -> Vec<u8> {
         [
-            <BLSPoP<E> as ProofOfPossession<E, H, DoublePublicKey<E>>>::POP_DOMAIN_SEPARATION_TAG,
+            <NuggetBLSPoP<E> as ProofOfPossession<E, H, DoublePublicKey<E>>>::POP_DOMAIN_SEPARATION_TAG,
             E::CURVE_NAME,
             E::SIG_GROUP_NAME,
             E::CIPHER_SUIT_DOMAIN_SEPARATION,
@@ -41,24 +41,24 @@ impl<E: EngineBLS> BLSPoP<E> {
 
 //The bls proof of possession for single or double public key schemes are the same
 impl<E: EngineBLS, H: DynDigest + Default + Clone>
-    ProofOfPossessionGenerator<E, H, DoublePublicKey<E>, BLSPoP<E>> for Keypair<E>
+    ProofOfPossessionGenerator<E, H, DoublePublicKey<E>, NuggetBLSPoP<E>> for Keypair<E>
 {
-    fn generate_pok(&mut self) -> BLSPoP<E> {
+    fn generate_pok(&mut self) -> NuggetBLSPoP<E> {
         //We simply classicaly BLS sign public key in G2 based on https://eprint.iacr.org/2022/1611
         let sigma_pop = ProofOfPossessionGenerator::<E, H, DoublePublicKey<E>, NuggetBLSnCPPoP<E>>::generate_pok(self);
-        BLSPoP::<E>(sigma_pop.0 .0)
+        NuggetBLSPoP::<E>(sigma_pop.0 .0)
     }
 }
 
 /// Serialization for DoublePublickey
-impl<E: EngineBLS> SerializableToBytes for BLSPoP<E> {
+impl<E: EngineBLS> SerializableToBytes for NuggetBLSPoP<E> {
     const SERIALIZED_BYTES_SIZE: usize = E::SIGNATURE_SERIALIZED_SIZE;
 }
 
 /// The verification process for verifying both possession of one secret key
 /// for two public key is different.
 impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, DoublePublicKey<E>>
-    for BLSPoP<E>
+    for NuggetBLSPoP<E>
 {
     const POP_DOMAIN_SEPARATION_TAG: &'static [u8] =
         constcat::concat_bytes!(BLS_CONTEXT, PROOF_OF_POSSESSION_CONTEXT,);
@@ -80,7 +80,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
             E::signature_point_to_byte(&public_key_in_signature_group);
 
         let public_key_hashed_to_signature_group = Message::new(
-            <BLSPoP<E>>::bls_pop_context::<H>().as_slice(),
+            <NuggetBLSPoP<E>>::bls_pop_context::<H>().as_slice(),
             &public_key_as_bytes,
         )
         .hash_to_signature_curve::<E>();
@@ -135,7 +135,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
         let sigma_pop = DoublePublicKeyScheme::<E>::sign(
             self,
             &Message::new(
-                <BLSPoP<E>>::bls_pop_context::<H>().as_slice(),
+                <NuggetBLSPoP<E>>::bls_pop_context::<H>().as_slice(),
                 &public_key_as_bytes.as_slice(),
             ),
         );
@@ -163,12 +163,12 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
         let public_key_in_public_key_group_as_bytes =
             PublicKey::<E>(public_key_of_prover.1).to_bytes();
         //verify double pairing && verify cp
-        <BLSPoP<E> as ProofOfPossession<E, H, DoublePublicKey<E>>>::verify(
-            &BLSPoP::<E>(self.0 .0),
+        <NuggetBLSPoP<E> as ProofOfPossession<E, H, DoublePublicKey<E>>>::verify(
+            &NuggetBLSPoP::<E>(self.0 .0),
             public_key_of_prover,
         ) && public_key_of_prover.verify(
             &Message::new(
-                <BLSPoP<E>>::bls_pop_context::<H>().as_slice(),
+                <NuggetBLSPoP<E>>::bls_pop_context::<H>().as_slice(),
                 &public_key_in_public_key_group_as_bytes.as_slice(),
             ),
             &self.0,
@@ -182,7 +182,7 @@ mod tests {
     use crate::engine::TinyBLS381;
     use crate::serialize::SerializableToBytes;
     use crate::single::Keypair;
-    use crate::{double_pop::BLSPoP, DoublePublicKey};
+    use crate::{double_pop::NuggetBLSPoP, DoublePublicKey};
     use crate::{ProofOfPossession, ProofOfPossessionGenerator};
 
     use rand::thread_rng;
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn nugget_bls_pop_sign() {
-        double_bls_pop_sign::<BLSPoP<TinyBLS381>>();
+        double_bls_pop_sign::<NuggetBLSPoP<TinyBLS381>>();
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn nugget_bls_pop_sign_and_verify() {
-        double_bls_pop_sign_and_verify::<BLSPoP<TinyBLS381>>();
+        double_bls_pop_sign_and_verify::<NuggetBLSPoP<TinyBLS381>>();
     }
 
     #[test]
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn nugget_bls_pop_of_random_public_key_should_fail() {
-        double_bls_pop_of_random_public_key_should_fail::<BLSPoP<TinyBLS381>>();
+        double_bls_pop_of_random_public_key_should_fail::<NuggetBLSPoP<TinyBLS381>>();
     }
 
     #[test]
@@ -314,9 +314,10 @@ mod tests {
     #[test]
     fn nugget_bls_pop_should_serialize_and_deserialize_for_bls12_381() {
         pop_of_a_double_public_key_should_serialize_and_deserialize_for_bls12_381::<
-            BLSPoP<TinyBLS381>,
+            NuggetBLSPoP<TinyBLS381>,
         >();
     }
+
     #[test]
     fn nugget_bls_and_cp_pop_should_serialize_and_deserialize_for_bls12_381() {
         pop_of_a_double_public_key_should_serialize_and_deserialize_for_bls12_381::<
