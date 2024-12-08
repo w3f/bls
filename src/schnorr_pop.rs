@@ -10,9 +10,9 @@ use crate::serialize::SerializableToBytes;
 use crate::single::{Keypair, PublicKey};
 
 use alloc::vec::Vec;
+use ark_ec::PrimeGroup;
 use digest::DynDigest;
-
-use ark_ec::Group;
+use digest::FixedOutputReset;
 
 pub type SchnorrProof<E> = (<E as EngineBLS>::Scalar, <E as EngineBLS>::Scalar);
 
@@ -26,36 +26,38 @@ impl<E: EngineBLS> Clone for SchnorrPoP<E> {
 }
 
 /// Generate Schnorr Signature for an arbitrary message using a key ment to use in BLS scheme
-trait BLSSchnorrPoPGenerator<E: EngineBLS, H: DynDigest + Default + Clone>:
+trait BLSSchnorrPoPGenerator<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>:
     ProofOfPossessionGenerator<E, H, PublicKey<E>, SchnorrPoP<E>>
 {
     /// Produce a secret witness scalar `k`, aka nonce, from hash of
     /// H( H(s) | H(public_key)) because our key does not have the
     /// randomness redundacy exists in EdDSA secret key.
-    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField;
+    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::ScalarField;
 }
 
-impl<E: EngineBLS, H: DynDigest + Default + Clone> BLSSchnorrPoPGenerator<E, H> for Keypair<E> {
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone> BLSSchnorrPoPGenerator<E, H>
+    for Keypair<E>
+{
     //The pseudo random witness is generated similar to eddsa witness
     //hash(secret_key|publick_key)
-    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField {
+    fn witness_scalar(&self) -> <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::ScalarField {
         let secret_key_as_bytes = self.secret.to_bytes();
         let public_key_as_bytes = <E as EngineBLS>::public_key_point_to_byte(&self.public.0);
 
         let mut secret_key_hasher = H::default();
-        secret_key_hasher.update(secret_key_as_bytes.as_slice());
+        DynDigest::update(&mut secret_key_hasher, secret_key_as_bytes.as_slice());
         let hashed_secret_key = secret_key_hasher.finalize_reset().to_vec();
 
         let hasher = <DefaultFieldHasher<H> as HashToField<
-            <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField,
+            <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::ScalarField,
         >>::new(&[]);
 
         let scalar_seed = [hashed_secret_key, public_key_as_bytes].concat();
-        hasher.hash_to_field(scalar_seed.as_slice(), 1)[0]
+        hasher.hash_to_field::<1>(scalar_seed.as_slice())[0]
     }
 }
 
-impl<E: EngineBLS, H: DynDigest + Default + Clone>
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>
     ProofOfPossessionGenerator<E, H, PublicKey<E>, SchnorrPoP<E>> for Keypair<E>
 {
     //TODO: Message must be equal to public key.
@@ -77,7 +79,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
         // avoiding one curve addition (or two field divisions) in expense of a hash.
         let mut r = <dyn BLSSchnorrPoPGenerator<E, H>>::witness_scalar(self);
 
-        let mut r_point = <<E as EngineBLS>::PublicKeyGroup as Group>::generator();
+        let mut r_point = <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::generator();
         r_point *= r; //todo perhaps we need to mandate E to have  a hard coded point
 
         let r_point_as_bytes = <E as EngineBLS>::public_key_point_to_byte(&r_point);
@@ -85,9 +87,9 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
 
         let proof_basis = [r_point_as_bytes, public_key_as_bytes].concat();
         let hasher = <DefaultFieldHasher<H> as HashToField<
-            <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField,
+            <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::ScalarField,
         >>::new(&[]);
-        let k = hasher.hash_to_field(proof_basis.as_slice(), 1)[0];
+        let k = hasher.hash_to_field::<1>(proof_basis.as_slice())[0];
 
         let s = (k * self.secret.into_vartime().0) + r;
 
@@ -97,14 +99,14 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone>
     }
 }
 
-impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, PublicKey<E>>
-    for SchnorrPoP<E>
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>
+    ProofOfPossession<E, H, PublicKey<E>> for SchnorrPoP<E>
 {
     /// verify the validity of schnoor proof for a given publick key by
     /// making sure this is equal to zero
     /// H(+s*G - k*Publkey|M) ==  k  
     fn verify(&self, public_key_of_prover: &PublicKey<E>) -> bool {
-        let mut schnorr_point = <<E as EngineBLS>::PublicKeyGroup as Group>::generator();
+        let mut schnorr_point = <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::generator();
         schnorr_point *= self.0 .0;
         let mut k_public_key = public_key_of_prover.0;
         k_public_key *= -self.0 .1;
@@ -117,9 +119,10 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Publi
         let resulting_proof_basis = [schnorr_point_as_bytes, public_key_as_bytes].concat();
 
         let hasher = <DefaultFieldHasher<H> as HashToField<
-            <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField,
+            <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::ScalarField,
         >>::new(&[]);
-        let random_scalar: E::Scalar = hasher.hash_to_field(resulting_proof_basis.as_slice(), 1)[0];
+        let random_scalar: E::Scalar =
+            hasher.hash_to_field::<1>(resulting_proof_basis.as_slice())[0];
         random_scalar == self.0 .1
     }
 }

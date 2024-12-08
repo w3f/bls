@@ -11,9 +11,9 @@ use crate::serialize::SerializableToBytes;
 use crate::single::{Keypair, PublicKey};
 
 use alloc::vec::Vec;
-use digest::DynDigest;
+use digest::{DynDigest, FixedOutputReset};
 
-use ark_ec::Group;
+use ark_ec::PrimeGroup;
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
@@ -23,7 +23,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub struct NuggetBLSPoP<E: EngineBLS>(pub E::SignatureGroup);
 
 //The bls proof of possession for single or double public key schemes are the same
-impl<E: EngineBLS, H: DynDigest + Default + Clone>
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>
     ProofOfPossessionGenerator<E, H, DoublePublicKey<E>, NuggetBLSPoP<E>> for Keypair<E>
 {
     fn generate_pok(&mut self) -> NuggetBLSPoP<E> {
@@ -40,8 +40,8 @@ impl<E: EngineBLS> SerializableToBytes for NuggetBLSPoP<E> {
 
 /// The verification process for verifying both possession of one secret key
 /// for two public key is different.
-impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, DoublePublicKey<E>>
-    for NuggetBLSPoP<E>
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>
+    ProofOfPossession<E, H, DoublePublicKey<E>> for NuggetBLSPoP<E>
 {
     /// verify the validity of PoP by performing the following Pairing
     /// e(H_pop(pk_2) + t.g_1, pk_2) = e(sign(H_pop(pk_2))+ t.pk_1, g_2)
@@ -70,11 +70,11 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
         .concat();
 
         let hasher = <DefaultFieldHasher<H> as HashToField<
-            <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField,
+            <<E as EngineBLS>::PublicKeyGroup as PrimeGroup>::ScalarField,
         >>::new(&[]);
 
         let randomization_coefficient: E::Scalar =
-            hasher.hash_to_field(random_oracle_seed.as_slice(), 1)[0];
+            hasher.hash_to_field::<1>(random_oracle_seed.as_slice())[0];
 
         let mut randomized_pub_in_g1 = public_key_in_signature_group;
         randomized_pub_in_g1 *= randomization_coefficient;
@@ -101,7 +101,7 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
 pub struct NuggetBLSnCPPoP<E: EngineBLS>(pub DoubleSignature<E>);
 
 //The implement the generation of bls proof of possession including  chaum-pederesno PoP for double public key schemes
-impl<E: EngineBLS, H: DynDigest + Default + Clone>
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>
     ProofOfPossessionGenerator<E, H, DoublePublicKey<E>, NuggetBLSnCPPoP<E>> for Keypair<E>
 {
     fn generate_pok(&mut self) -> NuggetBLSnCPPoP<E> {
@@ -123,8 +123,8 @@ impl<E: EngineBLS> SerializableToBytes for NuggetBLSnCPPoP<E> {
 }
 
 /// The verification process for verifying both nugget BLS and CP
-impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, DoublePublicKey<E>>
-    for NuggetBLSnCPPoP<E>
+impl<E: EngineBLS, H: DynDigest + FixedOutputReset + Default + Clone>
+    ProofOfPossession<E, H, DoublePublicKey<E>> for NuggetBLSnCPPoP<E>
 {
     /// verify the validity of PoP by verifying nugget PoP and the CP
     /// signature

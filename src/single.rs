@@ -71,7 +71,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 
     pub fn from_seed(seed: &[u8]) -> Self {
         let hasher = <DefaultFieldHasher<Sha256> as HashToField<E::Scalar>>::new(&[]);
-        return SecretKeyVT(hasher.hash_to_field(seed, 1)[0]);
+        return SecretKeyVT(hasher.hash_to_field::<1>(seed)[0]);
     }
 }
 
