@@ -41,7 +41,7 @@ use super::verifiers::{
 };
 use super::*;
 
-use digest::DynDigest;
+use digest::{DynDigest, FixedOutputReset};
 
 /// Batch or aggregate BLS signatures with attached messages and
 /// signers, for whom we previously checked proofs-of-possession.
@@ -148,7 +148,7 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
     // }
 
     pub fn verify_using_aggregated_auxiliary_public_keys<
-        RandomOracle: DynDigest + Default + Clone,
+        RandomOracle: DynDigest + FixedOutputReset + Default + Clone,
     >(
         &self,
     ) -> bool {
