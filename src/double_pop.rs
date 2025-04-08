@@ -61,13 +61,17 @@ impl<E: EngineBLS, H: DynDigest + Default + Clone> ProofOfPossession<E, H, Doubl
             Message::new_pop_message(b"", &public_key_as_bytes).hash_to_signature_curve::<E>();
         let public_key_hashed_to_signature_group_as_bytes =
             E::signature_point_to_byte(&public_key_hashed_to_signature_group);
-        let random_oracle_seed = [
-            public_key_hashed_to_signature_group_as_bytes,
-            public_key_as_bytes,
-            public_key_in_signature_group_as_bytes,
-            E::signature_point_to_byte(&self.0),
-        ]
-        .concat();
+        let mut random_oracle_seed = Vec::with_capacity(
+            public_key_hashed_to_signature_group_as_bytes.len()
+                + public_key_as_bytes.len()
+                + public_key_in_signature_group_as_bytes.len()
+                + E::SIGNATURE_SERIALIZED_SIZE,
+        );
+
+        random_oracle_seed.extend_from_slice(&public_key_hashed_to_signature_group_as_bytes);
+        random_oracle_seed.extend_from_slice(&public_key_as_bytes);
+        random_oracle_seed.extend_from_slice(&public_key_in_signature_group_as_bytes);
+        random_oracle_seed.extend_from_slice(&E::signature_point_to_byte(&self.0));
 
         let hasher = <DefaultFieldHasher<H> as HashToField<
             <<E as EngineBLS>::PublicKeyGroup as Group>::ScalarField,

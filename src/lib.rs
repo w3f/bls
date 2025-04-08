@@ -99,9 +99,6 @@ extern crate sha3;
 
 extern crate alloc;
 
-#[cfg(feature = "serde")]
-extern crate serde;
-
 use core::borrow::Borrow;
 use digest::DynDigest;
 
