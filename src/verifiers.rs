@@ -82,7 +82,7 @@ fn collect_messages_and_publickeys<S: Signed>(
     let mut publickeys = Vec::with_capacity(l);
     let mut messages = Vec::with_capacity(l);
     for (message, publickey) in itr {
-        publickeys.push(publickey.borrow().0);
+        publickeys.push(publickey.public_key().0);
         messages.push(message.borrow().hash_to_signature_curve::<S::E>());
     }
     (signature, publickeys, messages)
@@ -112,6 +112,58 @@ fn merge_by_signer<E: EngineBLS>(
             .or_insert((pk, m));
     }
     pks_n_ms.into_values().unzip()
+}
+
+/// Like `merge_by_signer` but keyed on `(public_key, aux_public_key)`.
+/// Only message points are merged for entries sharing the same signer pair.
+/// Like `merge_by_signer` but also carries auxiliary public keys.
+/// Keyed on the public key; returns `None` if the same public key
+/// appears with conflicting auxiliary keys.
+fn merge_by_signer_with_aux<E: EngineBLS>(
+    affine_publickeys: Vec<PublicKeyAffine<E>>,
+    aux_keys: Vec<SignatureProjective<E>>,
+    messages: Vec<SignatureProjective<E>>,
+) -> Option<(
+    Vec<PublicKeyAffine<E>>,
+    Vec<SignatureAffine<E>>,
+    Vec<SignatureProjective<E>>,
+)> {
+    type PkAuxMsg<E> = (
+        PublicKeyAffine<E>,
+        SignatureAffine<E>,
+        SignatureProjective<E>,
+    );
+    let mut map: BTreeMap<Vec<u8>, PkAuxMsg<E>> = BTreeMap::new();
+    for ((pk, aux), m) in affine_publickeys
+        .into_iter()
+        .zip(aux_keys)
+        .zip(messages)
+    {
+        let aux_affine = aux.into_affine();
+        let mut pk_bytes = vec![0; pk.uncompressed_size()];
+        pk.serialize_uncompressed(&mut pk_bytes[..]).unwrap();
+        match map.entry(pk_bytes) {
+            alloc::collections::btree_map::Entry::Occupied(mut e) => {
+                let (_, existing_aux, existing_msg) = e.get_mut();
+                if *existing_aux != aux_affine {
+                    return None;
+                }
+                *existing_msg += m;
+            }
+            alloc::collections::btree_map::Entry::Vacant(e) => {
+                e.insert((pk, aux_affine, m));
+            }
+        }
+    }
+    let mut pks = Vec::with_capacity(map.len());
+    let mut auxs = Vec::with_capacity(map.len());
+    let mut msgs = Vec::with_capacity(map.len());
+    for (pk, aux, m) in map.into_values() {
+        pks.push(pk);
+        auxs.push(aux);
+        msgs.push(m);
+    }
+    Some((pks, auxs, msgs))
 }
 
 /// Batch-normalize projective public keys, or convert to affine individually
@@ -154,7 +206,7 @@ pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
     let signature = S::E::prepare_signature(affine_signature);
     let mut prepared = Vec::new();
     for (message, public_key) in s.messages_and_publickeys() {
-        let pk_affine: PublicKeyAffine<S::E> = public_key.borrow().0.into();
+        let pk_affine: PublicKeyAffine<S::E> = public_key.public_key().0.into();
         if !S::E::verify_public_key_in_public_key_subgroup(&pk_affine) {
             return false;
         }
@@ -209,20 +261,22 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 }
 
 /// BLS signature verification optimized for all unique messages
-/// with aggregated auxiliary public keys.
+/// with auxiliary public keys.
 ///
-/// Similar to `verify_with_distinct_messages` but adds a randomized
-/// auxiliary public key component to each message point and the
-/// signature, using deterministic randomness derived from the inputs.
+/// Similar to `verify_with_distinct_messages` but for each merged
+/// (signer, message) entry, derives a per-entry pseudo-random scalar
+/// and folds the auxiliary key contribution into the message point
+/// and signature.
+// e(asig + \sum_i t_i apk_i,1 , g_2) = \sum_i e (H(m_i) + t_i g_1,apk_i,2)
+
 pub fn verify_using_aggregated_auxiliary_public_keys<
     E: EngineBLS,
     H: FixedOutputReset + Default + Clone,
 >(
-    signed: &single_pop_aggregator::SignatureAggregatorAssumingPoP<E>,
+    signed: &pop_aggregator::SignatureAggregatorAssumingPoP<E>,
     normalize_public_keys: bool,
-    aggregated_aux_pub_key: <E as EngineBLS>::SignatureGroup,
 ) -> bool {
-    let signature = Signed::signature(&signed).0;
+    let mut signature = Signed::signature(&signed).0;
 
     let mut signature_as_bytes = vec![0; signature.compressed_size()];
     signature
@@ -234,62 +288,54 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
         let (lower, upper) = itr.size_hint();
         upper.unwrap_or(lower)
     };
-    let (first_message, first_public_key) = match signed.messages_and_publickeys().next() {
-        Some((first_message, first_public_key)) => (first_message, first_public_key),
-        None => return false,
-    };
 
-    let mut first_public_key_as_bytes = vec![0; first_public_key.compressed_size()];
-    first_public_key
-        .serialize_compressed(&mut first_public_key_as_bytes[..])
-        .expect("compressed size has been alocated");
-
-    let first_message_point = first_message.hash_to_signature_curve::<E>();
-    let first_message_point_as_bytes = E::signature_point_to_byte(&first_message_point);
-
-    let mut aggregated_aux_pub_key_as_bytes = vec![0; aggregated_aux_pub_key.compressed_size()];
-    aggregated_aux_pub_key
-        .serialize_compressed(&mut aggregated_aux_pub_key_as_bytes[..])
-        .expect("compressed size has been alocated");
-
-    // We first hash the messages to the signature curve and
-    // normalize the public keys to operate on them as bytes.
-    // TODO: Assess if we should mutate in place using interior
-    // mutability, maybe using `BorrowMut` support in
-    // `batch_normalization`.
-
-    // deterministic randomness for adding aggregated auxiliary pub keys
-    //TODO you can't just assume that there is one pubickey you need to stop if they were more or aggregate them
-
-    let pseudo_random_scalar_seed = [
-        first_message_point_as_bytes,
-        first_public_key_as_bytes,
-        aggregated_aux_pub_key_as_bytes,
-        signature_as_bytes,
-    ]
-    .concat();
-
-    let hasher = <DefaultFieldHasher<H> as HashToField<E::Scalar>>::new(&[]);
-    let pseudo_random_scalar: E::Scalar =
-        hasher.hash_to_field::<1>(&pseudo_random_scalar_seed[..])[0];
-
-    let signature = signature + aggregated_aux_pub_key * pseudo_random_scalar;
-
-    //Simplify from here on.
+    // Collect public keys, auxiliary keys, and message points.
     let mut publickeys = Vec::with_capacity(l);
+    let mut aux_keys = Vec::with_capacity(l);
     let mut messages = Vec::with_capacity(l);
     for (m, pk) in itr {
-        publickeys.push(pk.0);
-        messages.push(
-            m.hash_to_signature_curve::<E>()
-                + E::SignatureGroupAffine::generator() * pseudo_random_scalar,
-        );
+        publickeys.push(pk.0.0);
+        aux_keys.push(pk.1.0);
+        messages.push(m.hash_to_signature_curve::<E>());
     }
 
     let affine_publickeys = normalize_publickeys::<E>(&publickeys, normalize_public_keys);
 
-    // We next accumulate message points with the same signer.
-    let (merged_pks, merged_msgs) = merge_by_signer::<E>(affine_publickeys, messages);
+    // Merge message points that share the same signer.
+    // Returns None if same public key appears with conflicting aux keys.
+    let (merged_pks, merged_aux, mut merged_msgs) = match
+        merge_by_signer_with_aux::<E>(affine_publickeys, aux_keys, messages)
+    {
+        Some(v) => v,
+        None => return false,
+    };
+
+    // For each merged entry, compute a per-entry pseudo-random scalar
+    // and fold the auxiliary key contribution into message and signature.
+    let hasher = <DefaultFieldHasher<H> as HashToField<E::Scalar>>::new(&[]);
+
+    for i in 0..merged_pks.len() {
+        let mut pk_bytes = vec![0; merged_pks[i].compressed_size()];
+        merged_pks[i]
+            .serialize_compressed(&mut pk_bytes[..])
+            .expect("compressed size has been alocated");
+
+        let mut aux_pk_bytes = vec![0; merged_aux[i].compressed_size()];
+        merged_aux[i]
+            .serialize_compressed(&mut aux_pk_bytes[..])
+            .expect("compressed size has been alocated");
+
+        let msg_bytes = E::signature_point_to_byte(&merged_msgs[i]);
+
+        let pseudo_random_scalar_seed =
+            [msg_bytes, pk_bytes, aux_pk_bytes, signature_as_bytes.clone()].concat();
+
+        let pseudo_random_scalar: E::Scalar =
+            hasher.hash_to_field::<1>(&pseudo_random_scalar_seed[..])[0];
+
+        signature += merged_aux[i] * pseudo_random_scalar;
+        merged_msgs[i] += E::SignatureGroupAffine::generator() * pseudo_random_scalar;
+    }
 
     // And verify the aggregate signature.
     let (affine_msgs, affine_sig) =

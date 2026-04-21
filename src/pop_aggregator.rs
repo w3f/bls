@@ -34,14 +34,18 @@
 // Aside about proof-of-possession in the DLOG setting
 // https://twitter.com/btcVeg/status/1085490561082183681
 
-use core::borrow::Borrow; // BorrowMut
-// We use BTreeMap instead of BTreeMap for no_std compatibility.
+use core::borrow::Borrow;
+// We use BTreeMap instead of HashMap for no_std compatibility.
 use alloc::collections::BTreeMap;
 
 use ark_ff::Zero;
 
-use super::verifiers::verify_with_distinct_messages;
+use super::verifiers::{
+    verify_using_aggregated_auxiliary_public_keys, verify_with_distinct_messages,
+};
 use super::*;
+
+use digest::FixedOutputReset;
 
 /// Batch or aggregate BLS signatures with attached messages and
 /// signers, for whom we previously checked proofs-of-possession.
@@ -72,69 +76,88 @@ use super::*;
 /// the `ProofsOfPossession` trait tooling permits both enforce the
 /// proofs-of-possession and provide a compact serialization.
 /// We see no reason to support serialization for this type as present.
-//
+/// message assumptions, or other aggre
+///
 /// In principle, one might combine proof-of-possession with distinct
 /// message assumptions, or other aggregation strategies, when
 /// verifiers have only observed a subset of the proofs-of-possession,
 /// but this sounds complex or worse fragile.
 ///
-// TODO: Implement gaussian elimination verification scheme.
+/// TODO: Implement gaussian elimination verification scheme.
+use nugget::PublicKeyInSignatureGroup;
 use single::PublicKey;
-/// ProofOfPossion trait which should be implemented by secret
 
 #[derive(Clone)]
-pub struct MultiMessageSignatureAggregatorAssumingPoP<E: EngineBLS> {
-    messages_n_publickeys: BTreeMap<Message, PublicKey<E>>,
+pub struct SignatureAggregatorAssumingPoP<E: EngineBLS> {
+    messages_n_publickeys: BTreeMap<Message, (PublicKey<E>, PublicKeyInSignatureGroup<E>)>,
     signature: Signature<E>,
 }
 
-impl<E: EngineBLS> MultiMessageSignatureAggregatorAssumingPoP<E> {
-    pub fn new() -> MultiMessageSignatureAggregatorAssumingPoP<E> {
-        MultiMessageSignatureAggregatorAssumingPoP {
+impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
+    pub fn new() -> SignatureAggregatorAssumingPoP<E> {
+        SignatureAggregatorAssumingPoP {
             messages_n_publickeys: BTreeMap::new(),
             signature: Signature(E::SignatureGroup::zero()),
         }
     }
 
     /// Add only a `Signature<E>` to our internal signature.
-    ///
-    /// Useful for constructing an aggregate signature, but we
-    /// recommend instead using a custom types like `BitPoPSignedMessage`.
     pub fn add_signature(&mut self, signature: &Signature<E>) {
         self.signature.0 += &signature.0;
     }
 
-    /// Add only a `Message` and `PublicKey<E>` to our internal data.
+    /// Add a `Message` and public key to our internal data.
     ///
-    /// Useful for constructing an aggregate signature, but we
-    /// recommend instead using a custom types like `BitPoPSignedMessage`.
-    pub fn add_message_n_publickey(&mut self, message: &Message, publickey: &PublicKey<E>) {
+    /// Public keys signing the same message are merged so that each
+    /// distinct message ends up paired with a single aggregated key.
+    /// If the public key carries an auxiliary key in the signature group,
+    /// it is automatically aggregated as well.
+    pub fn add_message_n_publickey(&mut self, message: &Message, publickey: &impl GeneralizedBLSPublicKey<E>) {
+        let pk = publickey.public_key();
+        let aux = publickey.public_key_in_signature_group();
         self.messages_n_publickeys
             .entry(message.clone())
-            .and_modify(|pk0| pk0.0 += &publickey.0)
-            .or_insert(*publickey);
+            .and_modify(|(pk0, aux0)| {
+                pk0.0 += &pk.0;
+                aux0.0 += &aux.0;
+            })
+            .or_insert((pk, aux));
     }
 
-    /// Aggregage BLS signatures assuming they have proofs-of-possession
+    /// Aggregate BLS signatures assuming they have proofs-of-possession.
+    ///
+    /// Folds in every `(message, publickey)` pair carried by `signed`
+    /// and adds its signature to our running total.  Public keys signing
+    /// the same message are merged together.
     pub fn aggregate<'a, S>(&mut self, signed: &'a S)
     where
         &'a S: Signed<E = E>,
-        <&'a S as Signed>::PKG: Borrow<PublicKey<E>>,
     {
         let signature = signed.signature();
-        for (message, pubickey) in signed.messages_and_publickeys() {
-            self.add_message_n_publickey(message.borrow(), pubickey.borrow());
+        for (message, publickey) in signed.messages_and_publickeys() {
+            self.add_message_n_publickey(message.borrow(), &publickey);
         }
         self.add_signature(&signature);
     }
+
+    pub fn verify_using_aggregated_auxiliary_public_keys<
+        RandomOracle: FixedOutputReset + Default + Clone,
+    >(
+        &self,
+    ) -> bool {
+        verify_using_aggregated_auxiliary_public_keys::<E, RandomOracle>(
+            self,
+            true,
+        )
+    }
 }
 
-impl<'a, E: EngineBLS> Signed for &'a MultiMessageSignatureAggregatorAssumingPoP<E> {
+impl<'a, E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
     type E = E;
 
     type M = &'a Message;
-    type PKG = &'a PublicKey<Self::E>;
-    type PKnM = alloc::collections::btree_map::Iter<'a, Message, PublicKey<E>>;
+    type PKG = &'a (PublicKey<E>, PublicKeyInSignatureGroup<E>);
+    type PKnM = alloc::collections::btree_map::Iter<'a, Message, (PublicKey<E>, PublicKeyInSignatureGroup<E>)>;
 
     fn messages_and_publickeys(self) -> Self::PKnM {
         self.messages_n_publickeys.iter()
@@ -158,12 +181,16 @@ impl<'a, E: EngineBLS> Signed for &'a MultiMessageSignatureAggregatorAssumingPoP
 #[cfg(test)]
 mod tests {
 
+    use crate::EngineBLS;
     use crate::Keypair;
     use crate::Message;
+    use crate::TinyBLS;
     use crate::UsualBLS;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use sha2::Sha256;
 
+    use ark_bls12_377::Bls12_377;
     use ark_bls12_381::Bls12_381;
 
     use super::*;
@@ -190,7 +217,7 @@ mod tests {
             Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([1u8; 32]));
         let good_sig1 = keypair1.sign(&good);
 
-        let mut aggregated_sigs = MultiMessageSignatureAggregatorAssumingPoP::<
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
             UsualBLS<Bls12_381, ark_bls12_381::Config>,
         >::new();
         aggregated_sigs.add_signature(&good_sig0);
@@ -216,7 +243,7 @@ mod tests {
         let good_sig0 = keypair.sign(&good0);
         let good_sig1 = keypair.sign(&good1);
 
-        let mut aggregated_sigs = MultiMessageSignatureAggregatorAssumingPoP::<
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
             UsualBLS<Bls12_381, ark_bls12_381::Config>,
         >::new();
         aggregated_sigs.add_signature(&good_sig0);
@@ -244,7 +271,7 @@ mod tests {
             Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([1u8; 32]));
         let good_sig1 = keypair1.sign(&good1);
 
-        let mut aggregated_sigs = MultiMessageSignatureAggregatorAssumingPoP::<
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
             UsualBLS<Bls12_381, ark_bls12_381::Config>,
         >::new();
         aggregated_sigs.add_signature(&good_sig0);
@@ -267,7 +294,7 @@ mod tests {
             Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
         let good_sig = keypair.sign(&good);
 
-        let mut aggregated_sigs = MultiMessageSignatureAggregatorAssumingPoP::<
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
             UsualBLS<Bls12_381, ark_bls12_381::Config>,
         >::new();
         aggregated_sigs.add_signature(&good_sig);
@@ -295,7 +322,7 @@ mod tests {
             Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([1u8; 32]));
         let bad_sig1 = keypair1.sign(&bad1);
 
-        let mut aggregated_sigs = MultiMessageSignatureAggregatorAssumingPoP::<
+        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
             UsualBLS<Bls12_381, ark_bls12_381::Config>,
         >::new();
         aggregated_sigs.add_signature(&good_sig0);
@@ -307,6 +334,141 @@ mod tests {
         assert!(
             aggregated_sigs.verify() == false,
             "aggregated signature of a wrong message should not verify"
+        );
+    }
+
+    #[test]
+    fn test_aggregate_tiny_sigs_and_verify_in_g1() {
+        let message = Message::new(b"ctx", b"test message");
+        let mut keypairs: Vec<_> = (0..3)
+            .into_iter()
+            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .collect();
+        let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
+            .iter()
+            .map(|k| {
+                nugget::NuggetBLS::<
+                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                >::into_public_key_in_signature_group(k)
+            })
+            .collect();
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        for (k, aux) in keypairs.iter_mut().zip(pub_keys_in_sig_grp.iter()) {
+            verifier_aggregator.add_signature(&k.sign(&message));
+            verifier_aggregator.add_message_n_publickey(&message, &(k.public, *aux));
+        }
+
+        assert!(
+            verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifying with honest auxilary public key should pass"
+        );
+
+        // Pair signer 0's public key with signer 1's aux key — should fail.
+        let mut bad_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        for (k, _aux) in keypairs.iter_mut().zip(pub_keys_in_sig_grp.iter()) {
+            bad_aggregator.add_signature(&k.sign(&message));
+        }
+        // signer 0 gets signer 1's aux key
+        bad_aggregator.add_message_n_publickey(&message, &(keypairs[0].public, pub_keys_in_sig_grp[1]));
+        // signers 1 and 2 get their correct aux keys
+        bad_aggregator.add_message_n_publickey(&message, &(keypairs[1].public, pub_keys_in_sig_grp[1]));
+        bad_aggregator.add_message_n_publickey(&message, &(keypairs[2].public, pub_keys_in_sig_grp[2]));
+
+        assert!(
+            !bad_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verification using non-matching auxilary public key should fail"
+        );
+    }
+
+    #[test]
+    fn test_aggregate_tiny_sigs_multi_messages_and_verify_in_g1() {
+        let messages: Vec<Message> = (0..3)
+            .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
+            .collect();
+        let mut keypairs: Vec<_> = (0..3)
+            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .collect();
+        let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
+            .iter()
+            .map(|k| {
+                nugget::NuggetBLS::<
+                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                >::into_public_key_in_signature_group(k)
+            })
+            .collect();
+
+        // Each signer signs their own distinct message, then we aggregate
+        // signatures, (message, publickey+aux) pairs into a single verifier aggregator.
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        for ((k, m), aux) in keypairs.iter_mut().zip(messages.iter()).zip(pub_keys_in_sig_grp.iter()) {
+            verifier_aggregator.add_signature(&k.sign(m));
+            verifier_aggregator.add_message_n_publickey(m, &(k.public, *aux));
+        }
+
+        assert!(
+            verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifying multi-message aggregate with honest auxilary public keys should pass"
+        );
+
+        // Rebuild with signer 0 having signer 1's aux key — should fail.
+        let mut bad_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        for ((k, m), _aux) in keypairs.iter_mut().zip(messages.iter()).zip(pub_keys_in_sig_grp.iter()) {
+            bad_aggregator.add_signature(&k.sign(m));
+        }
+        // signer 0 gets signer 1's aux key
+        bad_aggregator.add_message_n_publickey(&messages[0], &(keypairs[0].public, pub_keys_in_sig_grp[1]));
+        bad_aggregator.add_message_n_publickey(&messages[1], &(keypairs[1].public, pub_keys_in_sig_grp[1]));
+        bad_aggregator.add_message_n_publickey(&messages[2], &(keypairs[2].public, pub_keys_in_sig_grp[2]));
+
+        assert!(
+            !bad_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "multi-message verification using non-matching auxilary public key should fail"
+        );
+    }
+
+    #[test]
+    fn test_aggregate_tiny_sigs_with_mislabeled_message_fails_verification_in_g1() {
+        // Each signer signs its real message, but in the verifier we
+        // deliberately pair every signer's public key with the *wrong*
+        // message (rotated by one).  The aggregated signature is honest,
+        // yet the (message, publickey) bookkeeping the verifier consumes
+        // is a lie, so verification must fail.
+        let real_messages: Vec<Message> = (0..3)
+            .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
+            .collect();
+        let mut keypairs: Vec<_> = (0..3)
+            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .collect();
+        let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
+            .iter()
+            .map(|k| {
+                nugget::NuggetBLS::<
+                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                >::into_public_key_in_signature_group(k)
+            })
+            .collect();
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+
+        for ((i, k), aux) in keypairs.iter_mut().enumerate().zip(pub_keys_in_sig_grp.iter()) {
+            // Sign the real message...
+            verifier_aggregator.add_signature(&k.sign(&real_messages[i]));
+            // ...but lie to the verifier about which message this key signed.
+            let wrong_message = &real_messages[(i + 1) % real_messages.len()];
+            verifier_aggregator.add_message_n_publickey(wrong_message, &(k.public, *aux));
+        }
+
+        assert!(
+            !verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verification must fail when public keys are paired with the wrong messages"
         );
     }
 }

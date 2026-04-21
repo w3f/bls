@@ -105,6 +105,7 @@ extern crate sha3;
 
 extern crate alloc;
 
+use ark_ff::Zero;
 use core::borrow::Borrow;
 use digest::DynDigest;
 
@@ -119,8 +120,7 @@ pub mod serialize;
 pub mod single;
 pub mod verifiers;
 
-pub mod multi_pop_aggregator;
-pub mod single_pop_aggregator;
+pub mod pop_aggregator;
 
 #[cfg(feature = "experimental")]
 pub mod experimental;
@@ -138,7 +138,48 @@ pub use single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signatur
 
 use alloc::vec::Vec;
 
-/// Internal message hash size.  
+/// Public key types usable in the [`Signed`] trait.
+///
+/// Standard BLS uses [`PublicKey<E>`] which carries only the key in the
+/// public-key group.  Nugget-style schemes use [`NuggetDoublePublicKey<E>`]
+/// (or similar) which carries keys in **both** curve groups and thus
+/// supports auxiliary-key verification.
+pub trait GeneralizedBLSPublicKey<E: EngineBLS> {
+    /// The public key in the public-key group.
+    fn public_key(&self) -> PublicKey<E>;
+
+    /// The auxiliary public key in the signature group.
+    /// Returns zero by default (no auxiliary key).
+    fn public_key_in_signature_group(&self) -> nugget::PublicKeyInSignatureGroup<E> {
+        nugget::PublicKeyInSignatureGroup(E::SignatureGroup::zero())
+    }
+}
+
+impl<E: EngineBLS> GeneralizedBLSPublicKey<E> for PublicKey<E> {
+    fn public_key(&self) -> PublicKey<E> {
+        *self
+    }
+}
+
+impl<E: EngineBLS> GeneralizedBLSPublicKey<E> for (PublicKey<E>, nugget::PublicKeyInSignatureGroup<E>) {
+    fn public_key(&self) -> PublicKey<E> {
+        self.0
+    }
+    fn public_key_in_signature_group(&self) -> nugget::PublicKeyInSignatureGroup<E> {
+        self.1
+    }
+}
+
+impl<'a, E: EngineBLS, T: GeneralizedBLSPublicKey<E>> GeneralizedBLSPublicKey<E> for &'a T {
+    fn public_key(&self) -> PublicKey<E> {
+        (*self).public_key()
+    }
+    fn public_key_in_signature_group(&self) -> nugget::PublicKeyInSignatureGroup<E> {
+        (*self).public_key_in_signature_group()
+    }
+}
+
+/// Internal message hash size.
 ///
 /// We choose 256 bits here so that birthday bound attacks cannot
 /// find messages with the same hash.
@@ -263,7 +304,7 @@ pub trait Signed: Sized {
     fn signature(&self) -> Signature<Self::E>;
 
     type M: Borrow<Message>; // = Message;
-    type PKG: Borrow<PublicKey<Self::E>>; // = PublicKey<Self::E>;
+    type PKG: GeneralizedBLSPublicKey<Self::E>; // = PublicKey<Self::E>;
 
     /// Iterator over, messages and public key reference pairs.
     type PKnM: Iterator<Item = (Self::M, Self::PKG)> + ExactSizeIterator;
