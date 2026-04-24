@@ -124,6 +124,39 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
             .or_insert((pk, aux));
     }
 
+    /// Add an auxiliary public key for an existing `(message, publickey)` entry.
+    /// Used by the verifier to aggregate a public key in the signature group
+    /// for a message signed by an already aggregated public key.
+    ///
+    /// If the message already exists with the same public key, the auxiliary
+    /// key is aggregated into the existing entry. If the message does not
+    /// exist yet, inserts a new entry.
+    ///
+    /// Returns an error if the message already exists with a different
+    /// public key — the main public key for each message should have been
+    /// completely aggregated before calling this function.
+    pub fn aggregate_aux_publickey_for_message_n_publickey(
+        &mut self,
+        message: &Message,
+        publickey: &PublicKey<E>,
+        aux: &PublicKeyInSignatureGroup<E>,
+    ) -> Result<(), &'static str> {
+        match self.messages_n_publickeys.get_mut(message) {
+            Some((existing_pk, existing_aux)) if existing_pk.0 == publickey.0 => {
+                existing_aux.0 += &aux.0;
+                Ok(())
+            }
+            Some(_) => {
+                Err("message already exists with a different public key")
+            }
+            None => {
+                self.messages_n_publickeys
+                    .insert(message.clone(), (*publickey, *aux));
+                Ok(())
+            }
+        }
+    }
+
     /// Aggregate BLS signatures assuming they have proofs-of-possession.
     ///
     /// Folds in every `(message, publickey)` pair carried by `signed`
@@ -354,33 +387,76 @@ mod tests {
             })
             .collect();
 
-        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        // Prover: knows individual keys, aggregates signatures and (pk, aux) pairs.
+        let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
         for (k, aux) in keypairs.iter_mut().zip(pub_keys_in_sig_grp.iter()) {
-            verifier_aggregator.add_signature(&k.sign(&message));
-            verifier_aggregator.add_message_n_publickey(&message, &(k.public, *aux));
+            prover_aggregator.add_signature(&k.sign(&message));
+            prover_aggregator.add_message_n_publickey(&message, &(k.public, *aux));
+        }
+
+        assert!(
+            prover_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "prover: verifying with honest auxilary public key should pass"
+        );
+
+        // Verifier: receives aggregated signature + per-message aggregated pk
+        // from the prover, then adds individual aux keys separately.
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        verifier_aggregator.add_signature(&(&prover_aggregator).signature());
+
+        for (msg, (pk, _aux)) in (&prover_aggregator).messages_and_publickeys() {
+            verifier_aggregator.add_message_n_publickey(msg, pk);
+        }
+
+        let aggregated_pk = (&prover_aggregator).messages_and_publickeys().next().unwrap().1.0;
+        for aux in &pub_keys_in_sig_grp {
+            verifier_aggregator
+                .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, aux)
+                .expect("public key should match");
         }
 
         assert!(
             verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
-            "verifying with honest auxilary public key should pass"
+            "verifier: verifying with honest auxilary public key should pass"
         );
 
-        // Pair signer 0's public key with signer 1's aux key — should fail.
-        let mut bad_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-
-        for (k, _aux) in keypairs.iter_mut().zip(pub_keys_in_sig_grp.iter()) {
-            bad_aggregator.add_signature(&k.sign(&message));
+        // Verifier with wrong aux: signer 1's aux used in place of signer 0's.
+        let mut bad_verifier = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        bad_verifier.add_signature(&(&prover_aggregator).signature());
+        for (msg, (pk, _aux)) in (&prover_aggregator).messages_and_publickeys() {
+            bad_verifier.add_message_n_publickey(msg, pk);
         }
-        // signer 0 gets signer 1's aux key
-        bad_aggregator.add_message_n_publickey(&message, &(keypairs[0].public, pub_keys_in_sig_grp[1]));
-        // signers 1 and 2 get their correct aux keys
-        bad_aggregator.add_message_n_publickey(&message, &(keypairs[1].public, pub_keys_in_sig_grp[1]));
-        bad_aggregator.add_message_n_publickey(&message, &(keypairs[2].public, pub_keys_in_sig_grp[2]));
+        bad_verifier
+            .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, &pub_keys_in_sig_grp[1])
+            .unwrap();
+        bad_verifier
+            .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, &pub_keys_in_sig_grp[1])
+            .unwrap();
+        bad_verifier
+            .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, &pub_keys_in_sig_grp[2])
+            .unwrap();
 
         assert!(
-            !bad_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
-            "verification using non-matching auxilary public key should fail"
+            !bad_verifier.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifier: non-matching auxilary public key should fail"
+        );
+
+        // Verifier tries to add aux with an individual signer's pk instead of
+        // the aggregated pk — should error because the message already has a
+        // different (aggregated) public key.
+        let mut mismatched_verifier = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        mismatched_verifier.add_signature(&(&prover_aggregator).signature());
+        mismatched_verifier.add_message_n_publickey(&message, &aggregated_pk);
+
+        let result = mismatched_verifier.aggregate_aux_publickey_for_message_n_publickey(
+            &message,
+            &keypairs[0].public, // individual pk, not the aggregated one
+            &pub_keys_in_sig_grp[0],
+        );
+        assert!(
+            result.is_err(),
+            "aggregate_aux should error when public key does not match existing entry"
         );
     }
 
@@ -402,34 +478,60 @@ mod tests {
             })
             .collect();
 
-        // Each signer signs their own distinct message, then we aggregate
-        // signatures, (message, publickey+aux) pairs into a single verifier aggregator.
-        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        // Prover: each signer signs their own distinct message.
+        let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
         for ((k, m), aux) in keypairs.iter_mut().zip(messages.iter()).zip(pub_keys_in_sig_grp.iter()) {
-            verifier_aggregator.add_signature(&k.sign(m));
-            verifier_aggregator.add_message_n_publickey(m, &(k.public, *aux));
+            prover_aggregator.add_signature(&k.sign(m));
+            prover_aggregator.add_message_n_publickey(m, &(k.public, *aux));
+        }
+
+        assert!(
+            prover_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "prover: multi-message aggregate with honest auxilary public keys should pass"
+        );
+
+        // Verifier: receives aggregated data from prover, adds aux keys separately.
+        // Collect per-message (msg, pk, aux) from the prover to preserve association.
+        let prover_entries: Vec<_> = (&prover_aggregator)
+            .messages_and_publickeys()
+            .map(|(m, (pk, aux))| (m.clone(), *pk, *aux))
+            .collect();
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        verifier_aggregator.add_signature(&(&prover_aggregator).signature());
+
+        for (msg, pk, _) in &prover_entries {
+            verifier_aggregator.add_message_n_publickey(msg, pk);
+        }
+
+        for (msg, pk, aux) in &prover_entries {
+            verifier_aggregator
+                .aggregate_aux_publickey_for_message_n_publickey(msg, pk, aux)
+                .expect("public key should match");
         }
 
         assert!(
             verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
-            "verifying multi-message aggregate with honest auxilary public keys should pass"
+            "verifier: multi-message aggregate with honest auxilary public keys should pass"
         );
 
-        // Rebuild with signer 0 having signer 1's aux key — should fail.
-        let mut bad_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-
-        for ((k, m), _aux) in keypairs.iter_mut().zip(messages.iter()).zip(pub_keys_in_sig_grp.iter()) {
-            bad_aggregator.add_signature(&k.sign(m));
+        // Verifier with wrong aux: rotate aux keys so each entry gets the wrong one.
+        let mut bad_verifier = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        bad_verifier.add_signature(&(&prover_aggregator).signature());
+        for (msg, pk, _) in &prover_entries {
+            bad_verifier.add_message_n_publickey(msg, pk);
         }
-        // signer 0 gets signer 1's aux key
-        bad_aggregator.add_message_n_publickey(&messages[0], &(keypairs[0].public, pub_keys_in_sig_grp[1]));
-        bad_aggregator.add_message_n_publickey(&messages[1], &(keypairs[1].public, pub_keys_in_sig_grp[1]));
-        bad_aggregator.add_message_n_publickey(&messages[2], &(keypairs[2].public, pub_keys_in_sig_grp[2]));
+        for (i, (msg, pk, _)) in prover_entries.iter().enumerate() {
+            let wrong_aux = &prover_entries[(i + 1) % prover_entries.len()].2;
+            bad_verifier
+                .aggregate_aux_publickey_for_message_n_publickey(msg, pk, wrong_aux)
+                .unwrap();
+        }
 
         assert!(
-            !bad_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
-            "multi-message verification using non-matching auxilary public key should fail"
+            !bad_verifier.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifier: non-matching auxilary public key should fail"
         );
     }
 
@@ -456,14 +558,32 @@ mod tests {
             })
             .collect();
 
-        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-
+        // Prover: signs real messages honestly.
+        let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
         for ((i, k), aux) in keypairs.iter_mut().enumerate().zip(pub_keys_in_sig_grp.iter()) {
-            // Sign the real message...
-            verifier_aggregator.add_signature(&k.sign(&real_messages[i]));
-            // ...but lie to the verifier about which message this key signed.
+            prover_aggregator.add_signature(&k.sign(&real_messages[i]));
+            prover_aggregator.add_message_n_publickey(&real_messages[i], &(k.public, *aux));
+        }
+
+        // Verifier: receives aggregated data from prover but pairs keys with wrong messages.
+        let prover_entries: Vec<_> = (&prover_aggregator)
+            .messages_and_publickeys()
+            .map(|(m, (pk, _))| (m.clone(), *pk))
+            .collect();
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        verifier_aggregator.add_signature(&(&prover_aggregator).signature());
+
+        // Deliberately rotate messages so each pk is paired with the wrong one.
+        for (i, (_msg, pk)) in prover_entries.iter().enumerate() {
             let wrong_message = &real_messages[(i + 1) % real_messages.len()];
-            verifier_aggregator.add_message_n_publickey(wrong_message, &(k.public, *aux));
+            verifier_aggregator.add_message_n_publickey(wrong_message, pk);
+        }
+        for (i, (_msg, pk)) in prover_entries.iter().enumerate() {
+            let wrong_message = &real_messages[(i + 1) % real_messages.len()];
+            verifier_aggregator
+                .aggregate_aux_publickey_for_message_n_publickey(wrong_message, pk, &pub_keys_in_sig_grp[i])
+                .expect("public key should match");
         }
 
         assert!(
