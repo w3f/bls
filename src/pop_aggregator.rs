@@ -178,10 +178,7 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
     >(
         &self,
     ) -> bool {
-        verify_using_aggregated_auxiliary_public_keys::<E, RandomOracle>(
-            self,
-            true,
-        )
+        verify_using_aggregated_auxiliary_public_keys::<_, RandomOracle>(self, true)
     }
 }
 
@@ -589,6 +586,72 @@ mod tests {
         assert!(
             !verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
             "verification must fail when public keys are paired with the wrong messages"
+        );
+    }
+
+    /// An empty aggregator paired with an identity signature would
+    /// otherwise satisfy `e(-g₁, O) == 1` and slip past every verifier.
+    /// Each high-level entry point must reject `n == 0`.
+    /// IETF `CoreAggregateVerify` mandates `n ≥ 1
+    #[test]
+    fn empty_aggregator_with_identity_signature_is_rejected() {
+        use crate::verifiers::{verify_simple, verify_unoptimized, verify_with_distinct_messages};
+
+        // Build an aggregator with no signers and an identity signature.
+        let aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        // SignatureAggregatorAssumingPoP::new sets the signature to `O`.
+        assert_eq!((&aggregator).messages_and_publickeys().count(), 0);
+
+        assert!(!verify_simple(&aggregator), "verify_simple must reject n=0");
+        assert!(
+            !verify_unoptimized(&aggregator),
+            "verify_unoptimized must reject n=0"
+        );
+        assert!(
+            !verify_with_distinct_messages(&aggregator, true),
+            "verify_with_distinct_messages must reject n=0"
+        );
+        assert!(
+            !aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verify_using_aggregated_auxiliary_public_keys must reject n=0"
+        );
+    }
+
+    /// `verify_using_aggregated_auxiliary_public_keys` folds in
+    /// `[t_i]·aux_i` on the signature side and `[t_i]·g₁` on the message
+    /// side for each signer. If the aggregator is built from plain
+    /// public keys (no auxiliary key), every `aux_i = O`, so the
+    /// signature side is unchanged while the message side gains a
+    /// nonzero `[Σ t_i]·g₁` term. The pairing equation then becomes
+    /// `e(g₁, sig) + e(Σ pk_i, g₁·Σt_i) = e(g₁, sig)`, which forces
+    /// `Σ t_i·pk_i = O`. The t_i are pseudo-random, so this is
+    /// astronomically unlikely — verification must fail.
+    #[test]
+    fn aux_key_verifier_rejects_aggregator_without_aux_keys() {
+        let message = Message::new(b"ctx", b"test message");
+        let mut keypairs: Vec<_> = (0..3)
+            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .collect();
+
+        let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        for k in keypairs.iter_mut() {
+            aggregator.add_signature(&k.sign(&message));
+            // Plain PublicKey<E>: GeneralizedBLSPublicKey impl returns
+            // `O` for `public_key_in_signature_group`, so no aux key.
+            aggregator.add_message_n_publickey(&message, &k.public);
+        }
+
+        // Sanity: ordinary aggregate verification accepts.
+        assert!(
+            (&aggregator).verify(),
+            "the aggregate without aux keys is itself a valid BLS signature"
+        );
+
+        // The aux-key verifier must reject because the message-side
+        // offset is unbalanced when aux keys are zero.
+        assert!(
+            !aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "aux-key verification must reject an aggregator with no auxiliary keys"
         );
     }
 }

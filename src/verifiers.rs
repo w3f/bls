@@ -40,11 +40,19 @@ pub type SignatureAffine<E> = <<E as EngineBLS>::SignatureGroup as CurveGroup>::
 /// Verify from fully normalized (affine) inputs.
 /// All public keys, messages, and the signature must already be in affine form.
 /// This prepares the pairing inputs and calls `verify_prepared`.
+///
+/// Rejects an empty `(publickeys, messages)` pairing set: with no
+/// signers, `verify_prepared` reduces to `e(-g1, sig) == 1`, which
+/// any identity signature satisfies. IETF `CoreAggregateVerify`
+/// mandates `n ≥ 1`; we enforce the same here.
 fn verify_normalized<E: EngineBLS>(
     affine_publickeys: &[PublicKeyAffine<E>],
     affine_messages: &[SignatureAffine<E>],
     affine_signature: SignatureAffine<E>,
 ) -> bool {
+    if affine_publickeys.is_empty() {
+        return false;
+    }
     if !E::verify_signature_in_signature_subgroup(&affine_signature) {
         return false;
     }
@@ -116,9 +124,8 @@ fn merge_by_signer<E: EngineBLS>(
 
 /// Like `merge_by_signer` but keyed on `(public_key, aux_public_key)`.
 /// Only message points are merged for entries sharing the same signer pair.
-/// Like `merge_by_signer` but also carries auxiliary public keys.
-/// Keyed on the public key; returns `None` if the same public key
-/// appears with conflicting auxiliary keys.
+/// returns `None` if the same public key appears with conflicting auxiliary
+/// keys.
 fn merge_by_signer_with_aux<E: EngineBLS>(
     affine_publickeys: Vec<PublicKeyAffine<E>>,
     aux_keys: Vec<SignatureProjective<E>>,
@@ -198,6 +205,9 @@ fn normalize_messages_and_signature<E: EngineBLS>(
 // ── Public verification functions ───────────────────────────────────
 
 /// Simple unoptimized BLS signature verification.  Useful for testing.
+///
+/// Rejects an empty `(message, publickey)` set — see `verify_normalized`
+/// for the rationale.
 pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
     let affine_signature = s.signature().0.into();
     if !S::E::verify_signature_in_signature_subgroup(&affine_signature) {
@@ -214,6 +224,9 @@ pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
             S::E::prepare_public_key(pk_affine),
             S::E::prepare_signature(message.borrow().hash_to_signature_curve::<S::E>()),
         ));
+    }
+    if prepared.is_empty() {
+        return false;
     }
     S::E::verify_prepared(signature, prepared.iter())
 }
@@ -270,13 +283,13 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 // e(asig + \sum_i t_i apk_i,1 , g_2) = \sum_i e (H(m_i) + t_i g_1,apk_i,2)
 
 pub fn verify_using_aggregated_auxiliary_public_keys<
-    E: EngineBLS,
+    S: Signed,
     H: FixedOutputReset + Default + Clone,
 >(
-    signed: &pop_aggregator::SignatureAggregatorAssumingPoP<E>,
+    signed: S,
     normalize_public_keys: bool,
 ) -> bool {
-    let mut signature = Signed::signature(&signed).0;
+    let mut signature = signed.signature().0;
 
     let mut signature_as_bytes = vec![0; signature.compressed_size()];
     signature
@@ -294,17 +307,17 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
     let mut aux_keys = Vec::with_capacity(l);
     let mut messages = Vec::with_capacity(l);
     for (m, pk) in itr {
-        publickeys.push(pk.0.0);
-        aux_keys.push(pk.1.0);
-        messages.push(m.hash_to_signature_curve::<E>());
+        publickeys.push(pk.public_key().0);
+        aux_keys.push(pk.public_key_in_signature_group().0);
+        messages.push(m.borrow().hash_to_signature_curve::<S::E>());
     }
 
-    let affine_publickeys = normalize_publickeys::<E>(&publickeys, normalize_public_keys);
+    let affine_publickeys = normalize_publickeys::<S::E>(&publickeys, normalize_public_keys);
 
     // Merge message points that share the same signer.
     // Returns None if same public key appears with conflicting aux keys.
     let (merged_pks, merged_aux, mut merged_msgs) = match
-        merge_by_signer_with_aux::<E>(affine_publickeys, aux_keys, messages)
+        merge_by_signer_with_aux::<S::E>(affine_publickeys, aux_keys, messages)
     {
         Some(v) => v,
         None => return false,
@@ -312,41 +325,53 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
 
     // For each merged entry, compute a per-entry pseudo-random scalar
     // and fold the auxiliary key contribution into message and signature.
-    let hasher = <DefaultFieldHasher<H> as HashToField<E::Scalar>>::new(&[]);
+    let hasher =
+        <DefaultFieldHasher<H> as HashToField<<S::E as EngineBLS>::Scalar>>::new(&[]);
+
+    // Seed layout: `[msg | pk | aux_pk | signature]`. The message, aux
+    // public key, and signature all live in the signature group; the
+    // public key lives in the public-key group. Sizes are fixed by the
+    // engine, so allocate the buffer once and refill it each iteration
+    // instead of allocating four vecs + concatenating per loop.
+    let seed_size = 3 * <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE
+        + <S::E as EngineBLS>::PUBLICKEY_SERIALIZED_SIZE;
+    let mut seed = Vec::with_capacity(seed_size);
 
     for i in 0..merged_pks.len() {
-        let mut pk_bytes = vec![0; merged_pks[i].compressed_size()];
+        seed.clear();
+        merged_msgs[i]
+            .into_affine()
+            .serialize_compressed(&mut seed)
+            .expect("compressed size known");
         merged_pks[i]
-            .serialize_compressed(&mut pk_bytes[..])
-            .expect("compressed size has been alocated");
-
-        let mut aux_pk_bytes = vec![0; merged_aux[i].compressed_size()];
+            .serialize_compressed(&mut seed)
+            .expect("compressed size known");
         merged_aux[i]
-            .serialize_compressed(&mut aux_pk_bytes[..])
-            .expect("compressed size has been alocated");
+            .serialize_compressed(&mut seed)
+            .expect("compressed size known");
+        seed.extend_from_slice(&signature_as_bytes);
 
-        let msg_bytes = E::signature_point_to_byte(&merged_msgs[i]);
-
-        let pseudo_random_scalar_seed =
-            [msg_bytes, pk_bytes, aux_pk_bytes, signature_as_bytes.clone()].concat();
-
-        let pseudo_random_scalar: E::Scalar =
-            hasher.hash_to_field::<1>(&pseudo_random_scalar_seed[..])[0];
+        let pseudo_random_scalar: <S::E as EngineBLS>::Scalar =
+            hasher.hash_to_field::<1>(&seed[..])[0];
 
         signature += merged_aux[i] * pseudo_random_scalar;
-        merged_msgs[i] += E::SignatureGroupAffine::generator() * pseudo_random_scalar;
+        merged_msgs[i] +=
+            <S::E as EngineBLS>::SignatureGroupAffine::generator() * pseudo_random_scalar;
     }
 
     // And verify the aggregate signature.
     let (affine_msgs, affine_sig) =
-        normalize_messages_and_signature::<E>(merged_msgs, signature);
+        normalize_messages_and_signature::<S::E>(merged_msgs, signature);
     // `verify_normalized` runs `verify_public_key_in_public_key_subgroup`
     // on every entry of `merged_pks`. That subgroup check is critical for
-    // this scheme: the auxiliary-key construction binds `aggregated_aux_pub_key`
-    // to the signers via the pseudo-random scalar, and a public key that
-    // sits outside the prime-order subgroup would let an attacker forge a
-    // matching `aggregated_aux_pub_key` and pass verification. Do not drop it.
-    verify_normalized::<E>(&merged_pks, &affine_msgs, affine_sig)
+    // this scheme: the auxiliary-key construction binds each per-entry
+    // aux key to the corresponding signer via the pseudo-random scalar,
+    // . A public key that sits outside the prime-order subgroup would
+    // let an attacker choose an aux key with a small-subgroup component
+    // that cancels against the mismatched public-key component in the
+    // pairing, forging a matching aggregated aux key and passing
+    // verification. Do not drop it.
+    verify_normalized::<S::E>(&merged_pks, &affine_msgs, affine_sig)
 }
 
 /*
