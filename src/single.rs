@@ -28,7 +28,7 @@ use alloc::{vec, vec::Vec};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_ff::{UniformRand, Zero};
 
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
 
 use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Compress, Read, SerializationError, Valid, Validate,
@@ -106,11 +106,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 
     /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
-        // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-        PublicKey(<E::PublicKeyGroup as CurveGroup>::Affine::generator().into_group() * self.0)
-        // let mut g = <E::PublicKeyGroup as CurveGroup>::one();
-        // g *= self.0;
-        // PublicKey(p)
+        PublicKey(<E::PublicKeyGroup as PrimeGroup>::generator() * self.0)
     }
 }
 
@@ -300,19 +296,10 @@ impl<E: EngineBLS> SecretKey<E> {
     /// We do not resplit for side channel protections here since
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
-        let generator = <E::PublicKeyGroup as CurveGroup>::Affine::generator();
+        let generator = <E::PublicKeyGroup as PrimeGroup>::generator();
         let mut publickey = generator * self.key[0];
-        publickey += generator.into_group() * self.key[1];
+        publickey += generator * self.key[1];
         PublicKey(publickey)
-        // TODO str4d never decided on projective vs affine here, so benchmark this.
-        /*
-        let mut x = <E::PublicKeyGroup as CurveGroup>::one();
-        x *= self.0;
-        let y = <E::PublicKeyGroup as CurveGroup>::one();
-        y *= self.1;
-        x += &y;
-        PublicKey(x)
-        */
     }
 }
 
@@ -485,6 +472,7 @@ impl<E: EngineBLS> Signature<E> {
     /// Verify a single BLS signature
     pub fn verify(&self, message: &Message, publickey: &PublicKey<E>) -> bool {
         let pk_affine: <E as EngineBLS>::PublicKeyGroupAffine = publickey.0.into();
+        //This is redundant if we have verified public key's PoP which reject out of subgroup keys 
         if !E::verify_public_key_in_public_key_subgroup(&pk_affine) {
             return false;
         }

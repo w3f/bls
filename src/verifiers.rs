@@ -8,7 +8,7 @@ use core::borrow::Borrow;
 // We use BTreeMap instead of HashMap for no_std compatibility.
 use alloc::collections::BTreeMap;
 use ark_ec::AffineRepr;
-use ark_ff::{One, Zero, field_hashers::{DefaultFieldHasher, HashToField}};
+use ark_ff::{field_hashers::{DefaultFieldHasher, HashToField}};
 use ark_serialize::CanonicalSerialize;
 use digest::FixedOutputReset;
 
