@@ -437,16 +437,8 @@ impl<E: EngineBLS> Signature<E> {
     /// Verify a single BLS signature
     pub fn verify(&self, message: &Message, publickey: &PublicKey<E>) -> bool {
         let publickey = E::prepare_public_key(publickey.0);
-        // TODO: Bentchmark these two variants
-        // Variant 1.  Do not batch any normalizations
         let message = E::prepare_signature(message.hash_to_signature_curve::<E>());
         let signature = E::prepare_signature(self.0);
-        // Variant 2.  Batch signature curve normalizations
-        //   let mut s = [E::hash_to_signature_curve(message), signature.0];
-        //   E::SignatureCurve::batch_normalization(&s);
-        //   let message = s[0].into_affine().prepare();
-        //   let signature = s[1].into_affine().prepare();
-        // TODO: Compare benchmarks on variants
         E::verify_prepared(signature, &[(publickey, message)])
     }
 }
