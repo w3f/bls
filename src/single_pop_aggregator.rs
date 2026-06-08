@@ -148,13 +148,13 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
 impl<'a, E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
     type E = E;
 
-    type M = Message;
+    type M = &'a Message;
     type PKG = PublicKey<Self::E>;
 
     fn messages_and_publickeys(
         self,
-    ) -> impl Iterator<Item = (Message, PublicKey<E>)> + ExactSizeIterator {
-        once((self.message.clone(), self.aggregated_publickey)) // TODO:  Avoid clone
+    ) -> impl Iterator<Item = (&'a Message, PublicKey<E>)> + ExactSizeIterator {
+        once((&self.message, self.aggregated_publickey))
     }
 
     fn signature(&self) -> Signature<E> {

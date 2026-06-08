@@ -90,8 +90,6 @@ fn collect_messages_and_publickeys<S: Signed>(
 /// parallel.  This might mean (a) some sort function using
 /// `ops::IndexMut` instead of slices, and (b) wrapper types to make
 /// tuples of slices satisfy `ops::IndexMut`.
-// TODO:  Impl PartialEq, Eq, Hash for pairing::EncodedPoint
-// to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
 fn merge_by_signer<E: EngineBLS>(
     affine_publickeys: Vec<PublicKeyAffine<E>>,
     messages: Vec<SignatureProjective<E>>,
@@ -121,7 +119,6 @@ fn normalize_publickeys<E: EngineBLS>(
         publickeys.iter().map(|pk| pk.into_affine()).collect()
     }
 }
-
 
 /// Batch-normalize message points together with the aggregate signature,
 /// returning the affine messages and the affine signature separately.
@@ -165,8 +162,7 @@ pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
 pub fn verify_simple<S: Signed>(s: S) -> bool {
     let (signature, publickeys, messages) = collect_messages_and_publickeys(s);
     let affine_pks = PublicKeyProjective::<S::E>::normalize_batch(&publickeys);
-    let (affine_msgs, affine_sig) =
-        normalize_messages_and_signature::<S::E>(messages, signature);
+    let (affine_msgs, affine_sig) = normalize_messages_and_signature::<S::E>(messages, signature);
     verify_normalized::<S::E>(&affine_pks, &affine_msgs, affine_sig)
 }
 
@@ -281,8 +277,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
     let (merged_pks, merged_msgs) = merge_by_signer::<E>(affine_publickeys, messages);
 
     // And verify the aggregate signature.
-    let (affine_msgs, affine_sig) =
-        normalize_messages_and_signature::<E>(merged_msgs, signature);
+    let (affine_msgs, affine_sig) = normalize_messages_and_signature::<E>(merged_msgs, signature);
     verify_normalized::<E>(&merged_pks, &affine_msgs, affine_sig)
 }
 

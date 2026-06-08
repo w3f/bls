@@ -258,16 +258,14 @@ pub trait Signed: Sized {
     /// Return the aggregated signature
     fn signature(&self) -> Signature<Self::E>;
 
-    type M: Borrow<Message>; // = Message;
-    type PKG: Borrow<PublicKey<Self::E>>; // = PublicKey<Self::E>;
+    type M: Borrow<Message>;
+    type PKG: Borrow<PublicKey<Self::E>>;
 
     /// Returns an iterator over messages and public key reference for
     /// pairings, often only partially aggregated.
     fn messages_and_publickeys(
         self,
     ) -> impl Iterator<Item = (Self::M, Self::PKG)> + ExactSizeIterator;
-    // fn messages_and_publickeys<'a>(&'s self) -> PKnM<'a>
-    // -> impl Iterator<Item = (&'a Self::M, &'a Self::E::PublicKeyGroup)> + 'a;
 
     /// Appropriate BLS signature verification for the `Self` type.
     ///
