@@ -589,6 +589,267 @@ mod tests {
         );
     }
 
+    /// Multi-message aggregation where **multiple signers share each
+    /// message**, with the verifier driven by a per-message bitfield
+    /// that names the participants. This is the realistic shape used
+    /// in a consensus protocol: the verifier knows the full signer
+    /// list (their `(pk, aux)` pairs) and is told, per message, which
+    /// subset signed.
+    ///
+    /// Three signers, two messages:
+    ///   m0 ← signed by k0, k1   (bitfield 0b011)
+    ///   m1 ← signed by k1, k2   (bitfield 0b110)
+    ///
+    /// k1 contributes to both messages, so the prover-side merge does
+    /// real work and the verifier-side reconstruction must reproduce
+    /// `pk_0+pk_1` and `pk_1+pk_2` from the bitfields.
+    #[test]
+    fn aggregate_tiny_sigs_overlapping_signers_multi_messages_in_g1() {
+        let messages: Vec<Message> = (0..2)
+            .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
+            .collect();
+        let mut keypairs: Vec<_> = (0..3)
+            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .collect();
+        // The verifier's list: every signer's public key together with
+        // its auxiliary key in the signature group.
+        let signer_list: Vec<(PublicKey<TinyBLS377>, PublicKeyInSignatureGroup<TinyBLS377>)> = keypairs
+            .iter()
+            .map(|k| {
+                let aux = nugget::NuggetBLS::<
+                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                >::into_public_key_in_signature_group(k);
+                (k.public, aux)
+            })
+            .collect();
+
+        // Per-message participation bitfield: bit i set iff signer i
+        // participated. m0 ← {0,1} = 0b011 ; m1 ← {1,2} = 0b110.
+        let bitfields: [u8; 2] = [0b011, 0b110];
+
+        // Prover: each named signer signs the corresponding message; the
+        // aggregator merges pk and aux for repeated messages.
+        let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        for (msg, &bits) in messages.iter().zip(bitfields.iter()) {
+            for i in 0..signer_list.len() {
+                if bits & (1 << i) != 0 {
+                    prover_aggregator.add_signature(&keypairs[i].sign(msg));
+                    prover_aggregator
+                        .add_message_n_publickey(msg, &(signer_list[i].0, signer_list[i].1));
+                }
+            }
+        }
+
+        assert!(
+            prover_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "prover: overlapping-signer multi-message aggregate must verify"
+        );
+
+        // What the prover transmits to the verifier:
+        //   - the aggregated signature,
+        //   - per message: (msg, aggregated_pk, participation_bitfield).
+        // The verifier only needs to be aware of the signer's aux keys.
+        let aux_key_list: Vec<PublicKeyInSignatureGroup<TinyBLS377>> =
+            signer_list.iter().map(|(_, aux)| *aux).collect();
+        let prover_signature = (&prover_aggregator).signature();
+        // For each protocol message, look up the merged pk that the
+        // prover computed. (We can't just index `prover_entries[i]`
+        // because the aggregator's BTreeMap orders by Message hash,
+        // which is unrelated to our `messages[i]` order.)
+        let lookup_agg_pk = |target: &Message| -> PublicKey<TinyBLS377> {
+            (&prover_aggregator)
+                .messages_and_publickeys()
+                .find(|(m, _)| *m == target)
+                .map(|(_, (pk, _aux))| *pk)
+                .expect("prover must have an entry for every transmitted message")
+        };
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        verifier_aggregator.add_signature(&prover_signature);
+        for (msg, &bits) in messages.iter().zip(bitfields.iter()) {
+            let agg_pk = lookup_agg_pk(msg);
+            verifier_aggregator.add_message_n_publickey(msg, &agg_pk);
+            for i in 0..aux_key_list.len() {
+                if bits & (1 << i) != 0 {
+                    verifier_aggregator
+                        .aggregate_aux_publickey_for_message_n_publickey(
+                            msg,
+                            &agg_pk,
+                            &aux_key_list[i],
+                        )
+                        .expect("aggregated pk must match the existing entry");
+                }
+            }
+        }
+
+        assert!(
+            verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifier: overlapping-signer multi-message aggregate must verify after attaching aux keys from bitfield"
+        );
+
+        // Negative control: verifier uses a bitfield that doesn't match
+        // the actual participation pattern. The aggregated pk per
+        // message still comes from the prover and is unchanged, but the
+        // aux keys attached now correspond to the wrong signer set, so
+        // the pairing equation must reject.
+        let bad_bitfields: [u8; 2] = [0b110, 0b011];
+        let mut bad_verifier = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        bad_verifier.add_signature(&prover_signature);
+        for (msg, &bits) in messages.iter().zip(bad_bitfields.iter()) {
+            let agg_pk = lookup_agg_pk(msg);
+            bad_verifier.add_message_n_publickey(msg, &agg_pk);
+            for i in 0..aux_key_list.len() {
+                if bits & (1 << i) != 0 {
+                    bad_verifier
+                        .aggregate_aux_publickey_for_message_n_publickey(
+                            msg,
+                            &agg_pk,
+                            &aux_key_list[i],
+                        )
+                        .expect("aggregated pk must match the existing entry");
+                }
+            }
+        }
+        assert!(
+            !bad_verifier.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifier: mismatched bitfield must fail"
+        );
+    }
+
+    /// **Triggers `merge_by_signer_with_aux`'s message-summing path.**
+    ///
+    /// Two signers, two messages, *everyone signs everything*:
+    ///   m0 ← {k0, k1}   (bitfield 0b11)
+    ///   m1 ← {k0, k1}   (bitfield 0b11)
+    ///
+    /// Both `(msg, agg_pk)` entries end up with the *same* aggregated
+    /// pk `pk_0+pk_1`. Inside `verify_using_aggregated_auxiliary_public_keys`,
+    /// `merge_by_signer_with_aux` keys by pk bytes and therefore collapses
+    /// the two entries into one with `msg = H(m0) + H(m1)` — the only
+    /// place where messages are actually summed.
+    ///
+    /// The prover transmits one bitfield per *protocol* message; the
+    /// verifier records `(msg_i, agg_pk_i, aux_for_msg_i)` for each;
+    /// only then does `merge_by_signer_with_aux` collapse entries by pk
+    /// for the pairing optimization. Per-message accountability lives
+    /// in the bitfield, not in the merged structure.
+    #[test]
+    fn aggregate_tiny_sigs_full_overlap_triggers_message_sum_in_g1() {
+        let messages: Vec<Message> = (0..2)
+            .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
+            .collect();
+        let mut keypairs: Vec<_> = (0..2)
+            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .collect();
+        let signer_list: Vec<(PublicKey<TinyBLS377>, PublicKeyInSignatureGroup<TinyBLS377>)> = keypairs
+            .iter()
+            .map(|k| {
+                let aux = nugget::NuggetBLS::<
+                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                >::into_public_key_in_signature_group(k);
+                (k.public, aux)
+            })
+            .collect();
+
+        // Same signers participate in every message.
+        let bitfields: [u8; 2] = [0b11, 0b11];
+
+        // Prover: 4 signing events (2 signers × 2 messages).
+        let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        for (msg, &bits) in messages.iter().zip(bitfields.iter()) {
+            for i in 0..signer_list.len() {
+                if bits & (1 << i) != 0 {
+                    prover_aggregator.add_signature(&keypairs[i].sign(msg));
+                    prover_aggregator
+                        .add_message_n_publickey(msg, &(signer_list[i].0, signer_list[i].1));
+                }
+            }
+        }
+
+        // Sanity: both entries should expose the same aggregated pk —
+        // this is what causes `merge_by_signer_with_aux` to collapse them.
+        let pks: Vec<_> = (&prover_aggregator)
+            .messages_and_publickeys()
+            .map(|(_, (pk, _))| pk.0)
+            .collect();
+        assert_eq!(pks.len(), 2);
+        assert_eq!(
+            pks[0], pks[1],
+            "both messages should aggregate to the same pk so the verifier-side merge sums their hashes"
+        );
+
+        assert!(
+            prover_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "prover: full-overlap aggregate must verify (exercises message-summing merge)"
+        );
+
+        // Verifier: receives signature + per-message (agg_pk, bitfield);
+        // has the aux list.
+        let aux_key_list: Vec<PublicKeyInSignatureGroup<TinyBLS377>> =
+            signer_list.iter().map(|(_, aux)| *aux).collect();
+        let prover_signature = (&prover_aggregator).signature();
+        let lookup_agg_pk = |target: &Message| -> PublicKey<TinyBLS377> {
+            (&prover_aggregator)
+                .messages_and_publickeys()
+                .find(|(m, _)| *m == target)
+                .map(|(_, (pk, _aux))| *pk)
+                .expect("prover must have an entry for every transmitted message")
+        };
+
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        verifier_aggregator.add_signature(&prover_signature);
+        for (msg, &bits) in messages.iter().zip(bitfields.iter()) {
+            let agg_pk = lookup_agg_pk(msg);
+            verifier_aggregator.add_message_n_publickey(msg, &agg_pk);
+            for i in 0..aux_key_list.len() {
+                if bits & (1 << i) != 0 {
+                    verifier_aggregator
+                        .aggregate_aux_publickey_for_message_n_publickey(
+                            msg,
+                            &agg_pk,
+                            &aux_key_list[i],
+                        )
+                        .expect("aggregated pk must match the existing entry");
+                }
+            }
+        }
+
+        assert!(
+            verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifier: full-overlap aggregate must verify"
+        );
+
+        // Negative control: drop signer 1 from m0's bitfield. The
+        // verifier-side merge now sees two entries with the same pk but
+        // *different* aggregated aux (aux_0 for m0, aux_0+aux_1 for m1).
+        // `merge_by_signer_with_aux` rejects on the aux mismatch and
+        // returns `None`, so verification fails before any pairing runs.
+        let bad_bitfields: [u8; 2] = [0b01, 0b11];
+        let mut bad_verifier = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+        bad_verifier.add_signature(&prover_signature);
+        for (msg, &bits) in messages.iter().zip(bad_bitfields.iter()) {
+            let agg_pk = lookup_agg_pk(msg);
+            bad_verifier.add_message_n_publickey(msg, &agg_pk);
+            for i in 0..aux_key_list.len() {
+                if bits & (1 << i) != 0 {
+                    bad_verifier
+                        .aggregate_aux_publickey_for_message_n_publickey(
+                            msg,
+                            &agg_pk,
+                            &aux_key_list[i],
+                        )
+                        .expect("aggregated pk must match the existing entry");
+                }
+            }
+        }
+        assert!(
+            !bad_verifier.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
+            "verifier: a bitfield that yields conflicting aux per pk must fail"
+        );
+    }
+
     /// An empty aggregator paired with an identity signature would
     /// otherwise satisfy `e(-g₁, O) == 1` and slip past every verifier.
     /// Each high-level entry point must reject `n == 0`.

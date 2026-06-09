@@ -280,7 +280,7 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// (signer, message) entry, derives a per-entry pseudo-random scalar
 /// and folds the auxiliary key contribution into the message point
 /// and signature.
-// e(asig + \sum_i t_i apk_i,1 , g_2) = \sum_i e (H(m_i) + t_i g_1,apk_i,2)
+// e(asig + \sum_i ( t_i*apk1_i) , g_2) = \sum_i (e(H(m_i) + (t_i*g_1), apk2_i))
 
 pub fn verify_using_aggregated_auxiliary_public_keys<
     S: Signed,
