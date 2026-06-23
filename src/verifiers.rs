@@ -280,8 +280,30 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// (signer, message) entry, derives a per-entry pseudo-random scalar
 /// and folds the auxiliary key contribution into the message point
 /// and signature.
+///
+/// Each `t_i` is derived from a global transcript that covers the
+/// aggregated signature and every merged `(message, apk1, apk2)`
+/// triple, so any change to one entry changes every `t_i`:
+///
+/// ```text
+/// transcript = asig || (m_1 || apk1_1 || apk2_1) || ... || (m_n || apk1_n || apk2_n)
+/// t_1 = H(transcript)
+/// t_i = H(transcript || i)        for i >= 2
+/// ```
+///
+/// `apk1_i` is the auxiliary public key (in the signature group),
+/// `apk2_i` is the public key (in the public-key group).
+///
+/// **Entry ordering is part of the spec.** Entries `1..=n` are emitted
+/// in **ascending lexicographic order of the affine, uncompressed
+/// serialization of `apk2_i`** (the public key). This is the order
+/// imposed by `merge_by_signer_with_aux`'s internal `BTreeMap` keyed
+/// on `pk.serialize_uncompressed(..)`. Prover and verifier must both
+/// follow this canonical ordering — otherwise their `t_i` indices
+/// disagree and verification fails on honest inputs. The merge step
+/// also collapses any entries sharing the same `apk2` into a single
+/// transcript slot (with summed messages and a shared `apk1`).
 // e(asig + \sum_i ( t_i*apk1_i) , g_2) = \sum_i (e(H(m_i) + (t_i*g_1), apk2_i))
-
 pub fn verify_using_aggregated_auxiliary_public_keys<
     S: Signed,
     H: FixedOutputReset + Default + Clone,
@@ -323,33 +345,47 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
         None => return false,
     };
 
-    // For each merged entry, compute a per-entry pseudo-random scalar
-    // and fold the auxiliary key contribution into message and signature.
     let hasher =
         <DefaultFieldHasher<H> as HashToField<<S::E as EngineBLS>::Scalar>>::new(&[]);
 
-    // Seed layout: `[msg | pk | aux_pk | signature]`. The message, aux
-    // public key, and signature all live in the signature group; the
-    // public key lives in the public-key group. Sizes are fixed by the
-    // engine, so allocate the buffer once and refill it each iteration
-    // instead of allocating four vecs + concatenating per loop.
-    let seed_size = 3 * <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE
-        + <S::E as EngineBLS>::PUBLICKEY_SERIALIZED_SIZE;
-    let mut seed = Vec::with_capacity(seed_size);
+    // Build the transcript once:
+    //   asig || (msg_1 || apk1_1 || apk2_1) || ... || (msg_n || apk1_n || apk2_n)
+    // We affine-batch the message points up front because the per-entry
+    // loop below mutates `merged_msgs`, so we cannot read their values
+    // again after we have started folding in the `t_i * g_1` terms.
+    let n = merged_pks.len();
+    let affine_merged_msgs =
+        <<S::E as EngineBLS>::SignatureGroup as CurveGroup>::normalize_batch(&merged_msgs);
 
-    for i in 0..merged_pks.len() {
-        seed.clear();
-        merged_msgs[i]
-            .into_affine()
-            .serialize_compressed(&mut seed)
-            .expect("compressed size known");
-        merged_pks[i]
+    let entry_size = 2 * <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE
+        + <S::E as EngineBLS>::PUBLICKEY_SERIALIZED_SIZE;
+    let transcript_size =
+        <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE + n * entry_size;
+    // Reserve a little extra for the per-entry index suffix used by t_i (i >= 2).
+    let mut seed = Vec::with_capacity(transcript_size + core::mem::size_of::<u64>());
+    seed.extend_from_slice(&signature_as_bytes);
+    for i in 0..n {
+        affine_merged_msgs[i]
             .serialize_compressed(&mut seed)
             .expect("compressed size known");
         merged_aux[i]
             .serialize_compressed(&mut seed)
             .expect("compressed size known");
-        seed.extend_from_slice(&signature_as_bytes);
+        merged_pks[i]
+            .serialize_compressed(&mut seed)
+            .expect("compressed size known");
+    }
+    let transcript_len = seed.len();
+
+    for i in 0..n {
+        // t_1 hashes the bare transcript; t_i for i >= 2 appends the
+        // 1-based index so each scalar is domain-separated by position
+        // while still binding the whole transcript.
+        seed.truncate(transcript_len);
+        if i > 0 {
+            let index = (i as u64) + 1;
+            seed.extend_from_slice(&index.to_be_bytes());
+        }
 
         let pseudo_random_scalar: <S::E as EngineBLS>::Scalar =
             hasher.hash_to_field::<1>(&seed[..])[0];
