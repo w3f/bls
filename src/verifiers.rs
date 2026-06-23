@@ -288,11 +288,16 @@ pub fn verify_with_distinct_messages<S: Signed>(signed: S, normalize_public_keys
 /// ```text
 /// transcript = asig || (m_1 || apk1_1 || apk2_1) || ... || (m_n || apk1_n || apk2_n)
 /// t_1 = H(transcript)
-/// t_i = H(transcript || i)        for i >= 2
+/// t_i = H(transcript || I2OSP(i, 8))   for i >= 2
 /// ```
 ///
 /// `apk1_i` is the auxiliary public key (in the signature group),
 /// `apk2_i` is the public key (in the public-key group).
+///
+/// The index `i` is encoded as `I2OSP(i, 8)` — an 8-byte big-endian
+/// (network-byte-order) unsigned integer, exactly as defined in
+/// RFC 8017 §4.1 and re-used by the IETF hash-to-curve draft
+/// (RFC 9380). In Rust this is `(i as u64).to_be_bytes()`.
 ///
 /// **Entry ordering is part of the spec.** Entries `1..=n` are emitted
 /// in **ascending lexicographic order of the affine, uncompressed
