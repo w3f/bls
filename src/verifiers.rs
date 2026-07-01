@@ -406,12 +406,17 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
     // `verify_normalized` runs `verify_public_key_in_public_key_subgroup`
     // on every entry of `merged_pks`. That subgroup check is critical for
     // this scheme: the auxiliary-key construction binds each per-entry
-    // aux key to the corresponding signer via the pseudo-random scalar,
-    // . A public key that sits outside the prime-order subgroup would
-    // let an attacker choose an aux key with a small-subgroup component
-    // that cancels against the mismatched public-key component in the
-    // pairing, forging a matching aggregated aux key and passing
-    // verification. Do not drop it.
+    // aux key to the corresponding signer via the pseudo-random scalar.
+    // Without the check, given an honest signer's (pk, aux) and a valid
+    // signature σ on m, an attacker can register a rogue
+    //     pk' = pk + T₁,  aux' = aux + T₂
+    // where T₁, T₂ are small-subgroup (non-prime-order) elements.
+    // Pairings annihilate small-subgroup components against prime-order
+    // ones, so the T₁, T₂ terms drop out of the verification equation
+    // and the same σ still verifies against (pk', aux'). The attacker
+    // thus obtains a distinct public key that accepts a signature they
+    // did not produce with the corresponding secret — a rogue-key /
+    // strict-unforgeability break. Do not drop it.
     verify_normalized::<S::E>(&merged_pks, &affine_msgs, affine_sig)
 }
 
@@ -498,7 +503,7 @@ mod tests {
     use crate::{Keypair, Message, PublicKey, Signature, UsualBLS};
     use ark_bls12_381::{Bls12_381, Fq, Fq2, G1Affine, G2Affine};
     use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
-    use ark_ff::{BitIteratorBE, PrimeField, UniformRand};
+    use ark_ff::{BitIteratorBE, One, PrimeField, UniformRand};
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
