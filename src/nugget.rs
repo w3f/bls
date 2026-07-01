@@ -25,7 +25,7 @@ use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier
 use crate::dual_scalar_mul::DualScalarMultiplication;
 use crate::chaum_pedersen_signature::DLEQProof;
 use crate::serialize::SerializableToBytes;
-use crate::single::{Keypair, KeypairVT, PublicKey, SecretKeyVT, Signature};
+use crate::single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signature};
 use crate::{EngineBLS, Message, Signed};
 
 /// Wrapper for a point in the signature group which is supposed to
@@ -89,6 +89,26 @@ where
     }
 }
 
+/// Side-channel-protected variant: signing goes through the
+/// `ChaumPedersenSigner` impl for `SecretKey`, so the resplit happens
+/// on the split key (no `into_vartime` conversion is done here).
+impl<E: EngineBLS, S: CurveGroup> NuggetBLS<E, S> for SecretKey<E>
+where
+    S: PrimeGroup<ScalarField = E::Scalar> + SerializableToBytes,
+{
+    fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
+        NuggetBLS::<E, S>::into_public_key_in_signature_group(&self.into_vartime())
+    }
+
+    fn into_public_key_in_sister_group(&self) -> PublicKeyInSisterGroup<S> {
+        self.into_vartime().into_public_key_in_sister_group()
+    }
+
+    fn sign(&mut self, message: &Message) -> NuggetSignature<E> {
+        ChaumPedersenSigner::<E, S, Sha256>::generate_cp_signature(self, &message)
+    }
+}
+
 impl<E: EngineBLS, S: CurveGroup> NuggetBLS<E, S> for KeypairVT<E>
 where
     S: PrimeGroup<ScalarField = E::Scalar> + SerializableToBytes,
@@ -112,16 +132,16 @@ where
     S: PrimeGroup<ScalarField = E::Scalar> + SerializableToBytes,
 {
     fn into_public_key_in_signature_group(&self) -> PublicKeyInSignatureGroup<E> {
-        NuggetBLS::<E, S>::into_public_key_in_signature_group(&self.into_vartime())
+        NuggetBLS::<E, S>::into_public_key_in_signature_group(&self.secret)
     }
 
     fn into_public_key_in_sister_group(&self) -> PublicKeyInSisterGroup<S> {
-        self.into_vartime().into_public_key_in_sister_group()
+        NuggetBLS::<E, S>::into_public_key_in_sister_group(&self.secret)
     }
 
     /// Sign a message using a Seedabale RNG created from a seed derived from the message and key
     fn sign(&mut self, message: &Message) -> NuggetSignature<E> {
-        NuggetBLS::<E, S>::sign(&mut self.into_vartime(), message)
+        NuggetBLS::<E, S>::sign(&mut self.secret, message)
     }
 }
 

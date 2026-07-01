@@ -3,7 +3,7 @@ use sha2::Sha256;
 #[cfg(feature = "std")]
 use w3f_bls::{
     experimental::schnorr_pop::SchnorrPoP,
-    multi_pop_aggregator::MultiMessageSignatureAggregatorAssumingPoP,
+    pop_aggregator::SignatureAggregatorAssumingPoP,
     Keypair, Message, ProofOfPossession, ProofOfPossessionGenerator, PublicKey, Signed, ZBLS,
 };
 
@@ -53,7 +53,7 @@ fn main() {
 
         //now that we have confidence in keys we can verify the batched signature
         let batch_poped = msgs.iter().zip(publickeys).zip(sigs).fold(
-            MultiMessageSignatureAggregatorAssumingPoP::<ZBLS>::new(),
+            SignatureAggregatorAssumingPoP::<ZBLS>::new(),
             |mut bpop, ((message, publickey), sig)| {
                 bpop.add_message_n_publickey(message, &publickey);
                 bpop.add_signature(&sig);

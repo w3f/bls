@@ -28,7 +28,7 @@ use alloc::{vec, vec::Vec};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_ff::{UniformRand, Zero};
 
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
 
 use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Compress, Read, SerializationError, Valid, Validate,
@@ -45,6 +45,7 @@ use sha3::{
 };
 
 use digest::Digest;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use core::iter::once;
 
@@ -54,8 +55,8 @@ use crate::{EngineBLS, Message, Signed};
 
 /// Secret signing key lacking the side channel protections from
 /// key splitting.  Avoid using directly in production.
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct SecretKeyVT<E: EngineBLS>(pub E::Scalar);
+#[derive(CanonicalSerialize, CanonicalDeserialize, Zeroize, ZeroizeOnDrop)]
+pub struct SecretKeyVT<E: EngineBLS>(#[zeroize] pub E::Scalar);
 
 impl<E: EngineBLS> Clone for SecretKeyVT<E> {
     fn clone(&self) -> Self {
@@ -105,11 +106,7 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 
     /// Derive our public key from our secret key
     pub fn into_public(&self) -> PublicKey<E> {
-        // TODO str4d never decided on projective vs affine here, so benchmark both versions.
-        PublicKey(<E::PublicKeyGroup as CurveGroup>::Affine::generator().into_group() * self.0)
-        // let mut g = <E::PublicKeyGroup as CurveGroup>::one();
-        // g *= self.0;
-        // PublicKey(p)
+        PublicKey(<E::PublicKeyGroup as PrimeGroup>::generator() * self.0)
     }
 }
 
@@ -163,10 +160,11 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 
 /// Secret signing key including the side channel protections from
 /// key splitting.
+#[derive(ZeroizeOnDrop)]
 pub struct SecretKey<E: EngineBLS> {
-    key: [E::Scalar; 2],
-    old_unsigned: E::SignatureGroup,
-    old_signed: E::SignatureGroup,
+    #[zeroize] key: [E::Scalar; 2],
+    #[zeroize] old_unsigned: E::SignatureGroup,
+    #[zeroize] old_signed: E::SignatureGroup,
 }
 
 impl<E: EngineBLS> Clone for SecretKey<E> {
@@ -269,24 +267,39 @@ impl<E: EngineBLS> SecretKey<E> {
         self.sign_once(message)
     }
 
+    /// Sign deterministically, reseeding the resplit RNG from a hash
+    /// of both key halves and the message.
+    pub fn seeded_sign(&mut self, message: &Message) -> Signature<E> {
+        let mut serialized_part1 = [0u8; 32];
+        let mut serialized_part2 = [0u8; 32];
+        self.key[0]
+            .serialize_compressed(&mut serialized_part1[..])
+            .unwrap();
+        self.key[1]
+            .serialize_compressed(&mut serialized_part2[..])
+            .unwrap();
+
+        let seed_digest = Sha256::new()
+            .chain_update(serialized_part1)
+            .chain_update(serialized_part2)
+            .chain_update(message.0);
+
+        ::zeroize::Zeroize::zeroize(&mut serialized_part1);
+        ::zeroize::Zeroize::zeroize(&mut serialized_part2);
+
+        let seed: [u8; 32] = seed_digest.finalize().into();
+        self.sign(message, StdRng::from_seed(seed))
+    }
+
     /// Derive our public key from our secret key
     ///
     /// We do not resplit for side channel protections here since
     /// this call should be rare.
     pub fn into_public(&self) -> PublicKey<E> {
-        let generator = <E::PublicKeyGroup as CurveGroup>::Affine::generator();
+        let generator = <E::PublicKeyGroup as PrimeGroup>::generator();
         let mut publickey = generator * self.key[0];
-        publickey += generator.into_group() * self.key[1];
+        publickey += generator * self.key[1];
         PublicKey(publickey)
-        // TODO str4d never decided on projective vs affine here, so benchmark this.
-        /*
-        let mut x = <E::PublicKeyGroup as CurveGroup>::one();
-        x *= self.0;
-        let y = <E::PublicKeyGroup as CurveGroup>::one();
-        y *= self.1;
-        x += &y;
-        PublicKey(x)
-        */
     }
 }
 
@@ -458,17 +471,18 @@ impl<E: EngineBLS> Signature<E> {
 
     /// Verify a single BLS signature
     pub fn verify(&self, message: &Message, publickey: &PublicKey<E>) -> bool {
-        let publickey = E::prepare_public_key(publickey.0);
-        // TODO: Bentchmark these two variants
-        // Variant 1.  Do not batch any normalizations
+        let pk_affine: <E as EngineBLS>::PublicKeyGroupAffine = publickey.0.into();
+        //This is redundant if we have verified public key's PoP which reject out of subgroup keys 
+        if !E::verify_public_key_in_public_key_subgroup(&pk_affine) {
+            return false;
+        }
+        let sig_affine: <E as EngineBLS>::SignatureGroupAffine = self.0.into();
+        if !E::verify_signature_in_signature_subgroup(&sig_affine) {
+            return false;
+        }
+        let publickey = E::prepare_public_key(pk_affine);
         let message = E::prepare_signature(message.hash_to_signature_curve::<E>());
-        let signature = E::prepare_signature(self.0);
-        // Variant 2.  Batch signature curve normalizations
-        //   let mut s = [E::hash_to_signature_curve(message), signature.0];
-        //   E::SignatureCurve::batch_normalization(&s);
-        //   let message = s[0].into_affine().prepare();
-        //   let signature = s[1].into_affine().prepare();
-        // TODO: Compare benchmarks on variants
+        let signature = E::prepare_signature(sig_affine);
         E::verify_prepared(signature, &[(publickey, message)])
     }
 }
@@ -601,23 +615,7 @@ impl<E: EngineBLS> Keypair<E> {
 
     /// Sign a message using a Seedabale RNG created from a seed derived from the message and key
     pub fn sign(&mut self, message: &Message) -> Signature<E> {
-        let mut serialized_part1 = [0u8; 32];
-        let mut serialized_part2 = [0u8; 32];
-        self.secret.key[0]
-            .serialize_compressed(&mut serialized_part1[..])
-            .unwrap();
-        self.secret.key[1]
-            .serialize_compressed(&mut serialized_part2[..])
-            .unwrap();
-
-        let seed_digest = Sha256::new()
-            .chain_update(serialized_part1)
-            .chain_update(serialized_part2)
-            .chain_update(message.0);
-
-        let seed: [u8; 32] = seed_digest.finalize().into();
-
-        self.sign_with_rng::<StdRng>(message, SeedableRng::from_seed(seed))
+        self.secret.seeded_sign(message)
     }
 
     #[cfg(feature = "std")]
@@ -992,4 +990,6 @@ mod tests {
             random_seed.as_slice(),
         );
     }
+
+
 }
