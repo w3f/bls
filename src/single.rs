@@ -18,6 +18,9 @@
 //! if we had seperate types for affine points, but if doing so
 //! improved performance enough then we instead suggest tweaking
 //! `CurveGroup::add_mixed` to test for normalized points.
+//!
+//! Serialization for Public Keys and Signatures is provided via
+//! [`SerializableToBytes`](crate::serialize::SerializableToBytes)
 
 use alloc::{vec, vec::Vec};
 

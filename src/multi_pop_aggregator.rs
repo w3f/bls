@@ -34,8 +34,9 @@
 // Aside about proof-of-possession in the DLOG setting
 // https://twitter.com/btcVeg/status/1085490561082183681
 
-use core::borrow::Borrow; // BorrowMut
-                          // We use BTreeMap instead of BTreeMap for no_std compatibility.
+use core::borrow::Borrow; // BorrowMuts
+
+// We use BTreeMap instead of HashMap for no_std compatibility.
 use alloc::collections::BTreeMap;
 
 use ark_ff::Zero;
