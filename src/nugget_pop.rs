@@ -92,7 +92,12 @@ impl<E: EngineBLS, H: FixedOutputReset + Default + Clone + 'static>
         let mut randomized_pub_in_g1 = public_key_in_signature_group;
         randomized_pub_in_g1 *= randomization_coefficient;
         let signature = E::prepare_signature(self.0 + randomized_pub_in_g1);
-        let prepared_public_key = E::prepare_public_key(public_key_of_prover.1);
+        let public_key_affine: <E as EngineBLS>::PublicKeyGroupAffine =
+            public_key_of_prover.1.into();
+        if !E::validate_public_key(&public_key_affine) {
+            return false;
+        }
+        let prepared_public_key = E::prepare_public_key(public_key_affine);
         let prepared = [
             (
                 prepared_public_key.clone(),
@@ -162,12 +167,13 @@ where
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::double_nugget::DoubleNuggetBLS;
-    use crate::engine::TinyBLS381;
+    use crate::engine::{EngineBLS, TinyBLS381};
     use crate::serialize::SerializableToBytes;
     use crate::single::Keypair;
     use crate::{nugget_pop::NuggetBLSPoP, NuggetDoublePublicKey};
     use crate::{ProofOfPossession, ProofOfPossessionGenerator};
 
+    use ark_ff::Zero;
     use rand::thread_rng;
     use sha2::Sha256;
 
@@ -323,5 +329,36 @@ mod tests {
         pop_of_a_double_public_key_should_serialize_and_deserialize_for_bls12_381::<
             NuggetBLSnCPPoP<TinyBLS381>,
         >();
+    }
+
+    /// A keypair with secret scalar zero and identity public key.
+    /// `SecretKeyVT::sign` returns `sk * H(msg) = identity` for such
+    /// a keypair, so the PoP produced by `generate_pok` is itself
+    /// identity. The pairing equation in `NuggetBLSPoP::verify` then
+    /// reduces to `identity == identity`, so without `validate_public_key`
+    /// the verifier would accept — rejection here is attributable to
+    /// the public key check.
+    #[test]
+    fn nugget_bls_pop_rejects_identity_pk() {
+        use crate::single::{PublicKey, SecretKeyVT};
+        let mut keypair = Keypair::<TinyBLS381> {
+            public: PublicKey::<TinyBLS381>(
+                <TinyBLS381 as EngineBLS>::PublicKeyGroup::zero(),
+            ),
+            secret: SecretKeyVT::<TinyBLS381>(<TinyBLS381 as EngineBLS>::Scalar::zero())
+                .into_split(thread_rng()),
+        };
+        let pop = <Keypair<TinyBLS381> as ProofOfPossessionGenerator<
+            TinyBLS381,
+            Sha256,
+            NuggetDoublePublicKey<TinyBLS381>,
+            NuggetBLSPoP<TinyBLS381>,
+        >>::generate_pok(&mut keypair);
+        let double_pk = DoubleNuggetBLS::into_nugget_double_public_key(&keypair);
+        assert!(!<NuggetBLSPoP<TinyBLS381> as ProofOfPossession<
+            TinyBLS381,
+            Sha256,
+            NuggetDoublePublicKey<TinyBLS381>,
+        >>::verify(&pop, &double_pk));
     }
 }

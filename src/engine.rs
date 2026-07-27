@@ -32,7 +32,7 @@ use ark_ec::{
 };
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_ff::{Field, PrimeField, UniformRand, Zero};
-use ark_serialize::CanonicalSerialize;
+use ark_serialize::{CanonicalSerialize, Valid};
 use rand::Rng;
 use rand_core::RngCore;
 
@@ -198,8 +198,7 @@ pub trait EngineBLS {
             signature,
         )];
         Self::final_exponentiation(Self::miller_loop(inputs.into_iter().map(|t| t).chain(&lhs)))
-            .unwrap()
-            == (PairingOutput::<Self::Engine>::zero()) //zero is the target_field::one !!
+            == Some(PairingOutput::<Self::Engine>::zero()) //zero is the target_field::one !!
     }
 
     /// Prepared negative of the generator of the public key curve.
@@ -217,6 +216,29 @@ pub trait EngineBLS {
     fn prepare_public_key(g: impl Into<Self::PublicKeyGroupAffine>) -> Self::PublicKeyPrepared {
         let g_affine: Self::PublicKeyGroupAffine = g.into();
         Self::PublicKeyPrepared::from(g_affine)
+    }
+
+    /// Subgroup-membership check for a public-key-group point.
+    /// Used during signature verification (identity is allowed there).
+    fn verify_public_key_in_public_key_subgroup(g: &Self::PublicKeyGroupAffine) -> bool {
+        g.check().is_ok()
+    }
+
+    /// Subgroup-membership check for a signature-group point.
+    /// Used during signature verification.
+    fn verify_signature_in_signature_subgroup(g: &Self::SignatureGroupAffine) -> bool {
+        g.check().is_ok()
+    }
+
+    /// Reject public keys that are the identity element or not in the
+    /// prime-order subgroup. Defends PoP verification against inputs
+    /// that bypass the deserialization-time check — e.g. direct
+    /// tuple-struct construction, or aggregates that sum to the identity.
+    ///
+    /// Implements `KeyValidate` from
+    /// <https://www.ietf.org/archive/id/draft-irtf-cfrg-bls-signature-06.html#name-validating-public-keys>.
+    fn validate_public_key(g: &Self::PublicKeyGroupAffine) -> bool {
+        !g.is_zero() && Self::verify_public_key_in_public_key_subgroup(g)
     }
 
     /// Process the signature to be use in pairing. This has to be

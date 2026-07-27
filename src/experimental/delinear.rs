@@ -123,7 +123,7 @@ impl<E: EngineBLS> Delinearized<E> {
         let (x, y) = array_refs!(&b, 8, 8);
         let mut x: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*x).into();
         let y: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*y).into();
-        x <<= 6; //warning: use of deprecated method `ark_ff::BigInteger::muln`: please use the operator `<<` instead : x.muln(64);
+        x <<= 64; //warning: use of deprecated method `ark_ff::BigInteger::muln`: please use the operator `<<` instead : x.muln(64);
         x.add_with_carry(&y);
         <E::Scalar as PrimeField>::from_bigint(x).unwrap()
     }
