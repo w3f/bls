@@ -303,7 +303,7 @@ pub trait Signed: Sized {
     fn signature(&self) -> Signature<Self::E>;
 
     type M: Borrow<Message>;
-    type PKG: Borrow<PublicKey<Self::E>>;
+    type PKG: GeneralizedBLSPublicKey<Self::E>;
 
     /// Returns an iterator over messages and public key reference for
     /// pairings, often only partially aggregated.

@@ -112,7 +112,11 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
     /// distinct message ends up paired with a single aggregated key.
     /// If the public key carries an auxiliary key in the signature group,
     /// it is automatically aggregated as well.
-    pub fn add_message_n_publickey(&mut self, message: &Message, publickey: &impl GeneralizedBLSPublicKey<E>) {
+    pub fn add_message_n_publickey(
+        &mut self,
+        message: &Message,
+        publickey: &impl GeneralizedBLSPublicKey<E>,
+    ) {
         let pk = publickey.public_key();
         let aux = publickey.public_key_in_signature_group();
         self.messages_n_publickeys
@@ -146,9 +150,7 @@ impl<E: EngineBLS> SignatureAggregatorAssumingPoP<E> {
                 existing_aux.0 += &aux.0;
                 Ok(())
             }
-            Some(_) => {
-                Err("message already exists with a different public key")
-            }
+            Some(_) => Err("message already exists with a different public key"),
             None => {
                 self.messages_n_publickeys
                     .insert(message.clone(), (*publickey, *aux));
@@ -187,9 +189,15 @@ impl<'a, E: EngineBLS> Signed for &'a SignatureAggregatorAssumingPoP<E> {
 
     type M = &'a Message;
     type PKG = &'a (PublicKey<E>, PublicKeyInSignatureGroup<E>);
-    type PKnM = alloc::collections::btree_map::Iter<'a, Message, (PublicKey<E>, PublicKeyInSignatureGroup<E>)>;
 
-    fn messages_and_publickeys(self) -> Self::PKnM {
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<
+        Item = (
+            &'a Message,
+            &'a (PublicKey<E>, PublicKeyInSignatureGroup<E>),
+        ),
+    > + ExactSizeIterator {
         self.messages_n_publickeys.iter()
     }
 
@@ -216,8 +224,8 @@ mod tests {
     use crate::Message;
     use crate::TinyBLS;
     use crate::UsualBLS;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use sha2::Sha256;
 
     use ark_bls12_377::Bls12_377;
@@ -229,8 +237,9 @@ mod tests {
     fn verify_aggregate_single_message_single_signer() {
         let good = Message::new(b"ctx", b"test message");
 
-        let mut keypair =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
+        let mut keypair = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([0u8; 32]),
+        );
         let good_sig0 = keypair.sign(&good);
         assert!(good_sig0.verify(&good, &keypair.public));
     }
@@ -239,17 +248,18 @@ mod tests {
     fn verify_aggregate_single_message_multi_signers() {
         let good = Message::new(b"ctx", b"test message");
 
-        let mut keypair0 =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
+        let mut keypair0 = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([0u8; 32]),
+        );
         let good_sig0 = keypair0.sign(&good);
 
-        let mut keypair1 =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([1u8; 32]));
+        let mut keypair1 = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([1u8; 32]),
+        );
         let good_sig1 = keypair1.sign(&good);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
-            UsualBLS<Bls12_381, ark_bls12_381::Config>,
-        >::new();
+        let mut aggregated_sigs =
+            SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -267,15 +277,15 @@ mod tests {
         let good0 = Message::new(b"ctx", b"Tab over Space");
         let good1 = Message::new(b"ctx", b"Space over Tab");
 
-        let mut keypair =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
+        let mut keypair = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([0u8; 32]),
+        );
 
         let good_sig0 = keypair.sign(&good0);
         let good_sig1 = keypair.sign(&good1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
-            UsualBLS<Bls12_381, ark_bls12_381::Config>,
-        >::new();
+        let mut aggregated_sigs =
+            SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -293,17 +303,18 @@ mod tests {
         let good0 = Message::new(b"ctx", b"in the beginning");
         let good1 = Message::new(b"ctx", b"there was a flying spaghetti monster");
 
-        let mut keypair0 =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
+        let mut keypair0 = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([0u8; 32]),
+        );
         let good_sig0 = keypair0.sign(&good0);
 
-        let mut keypair1 =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([1u8; 32]));
+        let mut keypair1 = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([1u8; 32]),
+        );
         let good_sig1 = keypair1.sign(&good1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
-            UsualBLS<Bls12_381, ark_bls12_381::Config>,
-        >::new();
+        let mut aggregated_sigs =
+            SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&good_sig1);
 
@@ -320,13 +331,13 @@ mod tests {
     fn verify_aggregate_single_message_repetative_signers() {
         let good = Message::new(b"ctx", b"test message");
 
-        let mut keypair =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
+        let mut keypair = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([0u8; 32]),
+        );
         let good_sig = keypair.sign(&good);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
-            UsualBLS<Bls12_381, ark_bls12_381::Config>,
-        >::new();
+        let mut aggregated_sigs =
+            SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig);
         aggregated_sigs.add_signature(&good_sig);
 
@@ -344,17 +355,18 @@ mod tests {
         let good0 = Message::new(b"ctx", b"Space over Tab");
         let bad1 = Message::new(b"ctx", b"Tab over Space");
 
-        let mut keypair0 =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([0u8; 32]));
+        let mut keypair0 = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([0u8; 32]),
+        );
         let good_sig0 = keypair0.sign(&good0);
 
-        let mut keypair1 =
-            Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(StdRng::from_seed([1u8; 32]));
+        let mut keypair1 = Keypair::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::generate(
+            StdRng::from_seed([1u8; 32]),
+        );
         let bad_sig1 = keypair1.sign(&bad1);
 
-        let mut aggregated_sigs = SignatureAggregatorAssumingPoP::<
-            UsualBLS<Bls12_381, ark_bls12_381::Config>,
-        >::new();
+        let mut aggregated_sigs =
+            SignatureAggregatorAssumingPoP::<UsualBLS<Bls12_381, ark_bls12_381::Config>>::new();
         aggregated_sigs.add_signature(&good_sig0);
         aggregated_sigs.add_signature(&bad_sig1);
 
@@ -372,7 +384,11 @@ mod tests {
         let message = Message::new(b"ctx", b"test message");
         let mut keypairs: Vec<_> = (0..3)
             .into_iter()
-            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .map(|i| {
+                Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed(
+                    [i; 32],
+                ))
+            })
             .collect();
         let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
             .iter()
@@ -406,7 +422,12 @@ mod tests {
             verifier_aggregator.add_message_n_publickey(msg, pk);
         }
 
-        let aggregated_pk = (&prover_aggregator).messages_and_publickeys().next().unwrap().1.0;
+        let aggregated_pk = (&prover_aggregator)
+            .messages_and_publickeys()
+            .next()
+            .unwrap()
+            .1
+             .0;
         for aux in &pub_keys_in_sig_grp {
             verifier_aggregator
                 .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, aux)
@@ -425,13 +446,25 @@ mod tests {
             bad_verifier.add_message_n_publickey(msg, pk);
         }
         bad_verifier
-            .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, &pub_keys_in_sig_grp[1])
+            .aggregate_aux_publickey_for_message_n_publickey(
+                &message,
+                &aggregated_pk,
+                &pub_keys_in_sig_grp[1],
+            )
             .unwrap();
         bad_verifier
-            .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, &pub_keys_in_sig_grp[1])
+            .aggregate_aux_publickey_for_message_n_publickey(
+                &message,
+                &aggregated_pk,
+                &pub_keys_in_sig_grp[1],
+            )
             .unwrap();
         bad_verifier
-            .aggregate_aux_publickey_for_message_n_publickey(&message, &aggregated_pk, &pub_keys_in_sig_grp[2])
+            .aggregate_aux_publickey_for_message_n_publickey(
+                &message,
+                &aggregated_pk,
+                &pub_keys_in_sig_grp[2],
+            )
             .unwrap();
 
         assert!(
@@ -463,7 +496,11 @@ mod tests {
             .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
             .collect();
         let mut keypairs: Vec<_> = (0..3)
-            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .map(|i| {
+                Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed(
+                    [i; 32],
+                ))
+            })
             .collect();
         let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
             .iter()
@@ -478,7 +515,11 @@ mod tests {
         // Prover: each signer signs their own distinct message.
         let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
-        for ((k, m), aux) in keypairs.iter_mut().zip(messages.iter()).zip(pub_keys_in_sig_grp.iter()) {
+        for ((k, m), aux) in keypairs
+            .iter_mut()
+            .zip(messages.iter())
+            .zip(pub_keys_in_sig_grp.iter())
+        {
             prover_aggregator.add_signature(&k.sign(m));
             prover_aggregator.add_message_n_publickey(m, &(k.public, *aux));
         }
@@ -543,7 +584,11 @@ mod tests {
             .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
             .collect();
         let mut keypairs: Vec<_> = (0..3)
-            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .map(|i| {
+                Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed(
+                    [i; 32],
+                ))
+            })
             .collect();
         let pub_keys_in_sig_grp: Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs
             .iter()
@@ -557,7 +602,11 @@ mod tests {
 
         // Prover: signs real messages honestly.
         let mut prover_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
-        for ((i, k), aux) in keypairs.iter_mut().enumerate().zip(pub_keys_in_sig_grp.iter()) {
+        for ((i, k), aux) in keypairs
+            .iter_mut()
+            .enumerate()
+            .zip(pub_keys_in_sig_grp.iter())
+        {
             prover_aggregator.add_signature(&k.sign(&real_messages[i]));
             prover_aggregator.add_message_n_publickey(&real_messages[i], &(k.public, *aux));
         }
@@ -579,7 +628,11 @@ mod tests {
         for (i, (_msg, pk)) in prover_entries.iter().enumerate() {
             let wrong_message = &real_messages[(i + 1) % real_messages.len()];
             verifier_aggregator
-                .aggregate_aux_publickey_for_message_n_publickey(wrong_message, pk, &pub_keys_in_sig_grp[i])
+                .aggregate_aux_publickey_for_message_n_publickey(
+                    wrong_message,
+                    pk,
+                    &pub_keys_in_sig_grp[i],
+                )
                 .expect("public key should match");
         }
 
@@ -609,20 +662,25 @@ mod tests {
             .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
             .collect();
         let mut keypairs: Vec<_> = (0..3)
-            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .map(|i| {
+                Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed(
+                    [i; 32],
+                ))
+            })
             .collect();
         // The verifier's list: every signer's public key together with
         // its auxiliary key in the signature group.
-        let signer_list: Vec<(PublicKey<TinyBLS377>, PublicKeyInSignatureGroup<TinyBLS377>)> = keypairs
-            .iter()
-            .map(|k| {
-                let aux = nugget::NuggetBLS::<
-                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
-                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
-                >::into_public_key_in_signature_group(k);
-                (k.public, aux)
-            })
-            .collect();
+        let signer_list: Vec<(PublicKey<TinyBLS377>, PublicKeyInSignatureGroup<TinyBLS377>)> =
+            keypairs
+                .iter()
+                .map(|k| {
+                    let aux = nugget::NuggetBLS::<
+                        TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                        <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                    >::into_public_key_in_signature_group(k);
+                    (k.public, aux)
+                })
+                .collect();
 
         // Per-message participation bitfield: bit i set iff signer i
         // participated. m0 ← {0,1} = 0b011 ; m1 ← {1,2} = 0b110.
@@ -740,18 +798,23 @@ mod tests {
             .map(|i| Message::new(b"ctx", &[b'm', b'0' + i as u8]))
             .collect();
         let mut keypairs: Vec<_> = (0..2)
-            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
-            .collect();
-        let signer_list: Vec<(PublicKey<TinyBLS377>, PublicKeyInSignatureGroup<TinyBLS377>)> = keypairs
-            .iter()
-            .map(|k| {
-                let aux = nugget::NuggetBLS::<
-                    TinyBLS<Bls12_377, ark_bls12_377::Config>,
-                    <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
-                >::into_public_key_in_signature_group(k);
-                (k.public, aux)
+            .map(|i| {
+                Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed(
+                    [i; 32],
+                ))
             })
             .collect();
+        let signer_list: Vec<(PublicKey<TinyBLS377>, PublicKeyInSignatureGroup<TinyBLS377>)> =
+            keypairs
+                .iter()
+                .map(|k| {
+                    let aux = nugget::NuggetBLS::<
+                        TinyBLS<Bls12_377, ark_bls12_377::Config>,
+                        <TinyBLS<Bls12_377, ark_bls12_377::Config> as EngineBLS>::SignatureGroup,
+                    >::into_public_key_in_signature_group(k);
+                    (k.public, aux)
+                })
+                .collect();
 
         // Same signers participate in every message.
         let bitfields: [u8; 2] = [0b11, 0b11];
@@ -891,7 +954,11 @@ mod tests {
     fn aux_key_verifier_rejects_aggregator_without_aux_keys() {
         let message = Message::new(b"ctx", b"test message");
         let mut keypairs: Vec<_> = (0..3)
-            .map(|i| Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed([i; 32])))
+            .map(|i| {
+                Keypair::<TinyBLS<Bls12_377, ark_bls12_377::Config>>::generate(StdRng::from_seed(
+                    [i; 32],
+                ))
+            })
             .collect();
 
         let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
