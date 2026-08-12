@@ -63,9 +63,10 @@ impl<'a, E: EngineBLS> Signed for &'a Delinearized<E> {
 
     type M = &'a Message;
     type PKG = &'a PublicKey<Self::E>;
-    type PKnM = ::std::collections::hash_map::Iter<'a, Message, PublicKey<E>>;
 
-    fn messages_and_publickeys(self) -> Self::PKnM {
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<Item = (&'a Message, &'a PublicKey<E>)> + ExactSizeIterator {
         self.messages_n_publickeys.iter()
     }
 

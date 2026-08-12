@@ -19,9 +19,8 @@
 //! improved performance enough then we instead suggest tweaking
 //! `CurveGroup::add_mixed` to test for normalized points.
 //!
-//! TODO: Add serde support for serialization throughout.  See
-//!  https://github.com/ebfull/pairing/pull/87#issuecomment-402397091
-//!  https://github.com/poanetwork/hbbft/blob/38178af1244ddeca27f9d23750ca755af6e886ee/src/crypto/serde_impl.rs#L95
+//! Serialization for Public Keys and Signatures is provided via
+//! [`SerializableToBytes`](crate::serialize::SerializableToBytes)
 
 use alloc::{vec, vec::Vec};
 
@@ -152,9 +151,6 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// methods of `SecretKeyVT`, so roughly
 /// `SecretKeyVT::from_repr(SecretKeyVT::read(reader) ?) ?.into_split(thread_rng())`.
 ///
-/// TODO: Provide sensible `to_bytes` and `from_bytes` methods
-/// for `ZBLS` and `TinyBLS<..>`.
-///
 /// TODO: Is Pippenger’s algorithm, or another fast MSM algorithm,
 /// secure when used with key splitting?
 
@@ -162,9 +158,12 @@ impl<E: EngineBLS> SecretKeyVT<E> {
 /// key splitting.
 #[derive(ZeroizeOnDrop)]
 pub struct SecretKey<E: EngineBLS> {
-    #[zeroize] key: [E::Scalar; 2],
-    #[zeroize] old_unsigned: E::SignatureGroup,
-    #[zeroize] old_signed: E::SignatureGroup,
+    #[zeroize]
+    key: [E::Scalar; 2],
+    #[zeroize]
+    old_unsigned: E::SignatureGroup,
+    #[zeroize]
+    old_signed: E::SignatureGroup,
 }
 
 impl<E: EngineBLS> Clone for SecretKey<E> {
@@ -393,7 +392,6 @@ where
     E: EngineBLS,
 {
     fn check(&self) -> Result<(), SerializationError> {
-        //TODO probabaly turn into vartime and check that because vartime impl valid
         match (self.key[0].check(), self.key[1].check()) {
             (Ok(()), Ok(())) => Ok(()),
             _ => Err(SerializationError::InvalidData),
@@ -462,7 +460,6 @@ impl<E: EngineBLS> SerializableToBytes for SecretKey<E> {
 /// Detached BLS Signature
 #[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Signature<E: EngineBLS>(pub E::SignatureGroup);
-// TODO: Serialization
 
 broken_derives!(Signature); // Actually the derive works for this one, not sure why.
 
@@ -472,7 +469,7 @@ impl<E: EngineBLS> Signature<E> {
     /// Verify a single BLS signature
     pub fn verify(&self, message: &Message, publickey: &PublicKey<E>) -> bool {
         let pk_affine: <E as EngineBLS>::PublicKeyGroupAffine = publickey.0.into();
-        //This is redundant if we have verified public key's PoP which reject out of subgroup keys 
+        //This is redundant if we have verified public key's PoP which reject out of subgroup keys
         if !E::verify_public_key_in_public_key_subgroup(&pk_affine) {
             return false;
         }
@@ -490,7 +487,6 @@ impl<E: EngineBLS> Signature<E> {
 /// BLS Public Key
 #[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
-// TODO: Serialization
 
 // impl<E: EngineBLS> PublicKey<E> where E: DeserializePublicKey {
 //     pub fn i_have_checked_this_proof_of_possession(self) -> PublicKey<PoP<E>> {
@@ -499,7 +495,6 @@ pub struct PublicKey<E: EngineBLS>(pub E::PublicKeyGroup);
 // }
 
 broken_derives!(PublicKey);
-//serialization!(PublicKey,PublicKeyGroup,EngineBLS,EngineBLS);
 
 impl<E: EngineBLS> PublicKey<E> {
     //const DESCRIPTION : &'static str = "A BLS signature";
@@ -529,7 +524,6 @@ impl<E: EngineBLS> Clone for KeypairVT<E> {
     }
 }
 
-// TODO: Serialization
 impl<E: EngineBLS> KeypairVT<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
@@ -584,7 +578,6 @@ impl<E: EngineBLS> Clone for Keypair<E> {
     }
 }
 
-// TODO: Serialization
 impl<E: EngineBLS> Keypair<E> {
     /// Generate a `Keypair`
     pub fn generate<R: Rng>(rng: R) -> Self {
@@ -644,7 +637,6 @@ pub struct SignedMessage<E: EngineBLS> {
     pub publickey: PublicKey<E>,
     pub signature: Signature<E>,
 }
-// TODO: Serialization
 
 // borrow_wrapper!(Signature,SignatureGroup,signature);
 // borrow_wrapper!(PublicKey,PublicKeyGroup,publickey);
@@ -662,13 +654,13 @@ impl<E: EngineBLS> Eq for SignedMessage<E> {}
 impl<'a, E: EngineBLS> Signed for &'a SignedMessage<E> {
     type E = E;
 
-    type M = Message;
+    type M = &'a Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
-
-    fn messages_and_publickeys(self) -> Self::PKnM {
-        once((self.message.clone(), self.publickey)) // TODO:  Avoid clone
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<Item = (&'a Message, PublicKey<E>)> + ExactSizeIterator {
+        once((&self.message, self.publickey))
     }
 
     fn signature(&self) -> Signature<E> {
@@ -990,6 +982,4 @@ mod tests {
             random_seed.as_slice(),
         );
     }
-
-
 }

@@ -205,9 +205,9 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
-
-    fn messages_and_publickeys(self) -> Self::PKnM {
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<Item = (Message, PublicKey<E>)> + ExactSizeIterator {
         let mut publickey = E::PublicKeyGroup::zero();
         for i in 0..8 * self.signers.borrow().len() {
             if self.signers.borrow()[i / 8] & (1 << (i % 8)) != 0 {
@@ -380,9 +380,9 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
-
-    fn messages_and_publickeys(self) -> Self::PKnM {
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<Item = (Message, PublicKey<E>)> + ExactSizeIterator {
         let mut publickey = E::PublicKeyGroup::zero();
         for signers in self.signers.iter().rev().map(|signers| signers.borrow()) {
             publickey.double_in_place();
@@ -659,8 +659,7 @@ mod tests {
         }
         assert!(bitsig1.merge(&bitsig2).is_err());
 
-        let mut multimsg =
-            crate::pop_aggregator::SignatureAggregatorAssumingPoP::<ZBLS>::new();
+        let mut multimsg = crate::pop_aggregator::SignatureAggregatorAssumingPoP::<ZBLS>::new();
         multimsg.aggregate(&bitsig1);
         multimsg.aggregate(&bitsig2);
         assert!(multimsg.verify()); // verifiers::verify_with_distinct_messages(&dms,true)

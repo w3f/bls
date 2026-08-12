@@ -8,7 +8,7 @@ use core::borrow::Borrow;
 // We use BTreeMap instead of HashMap for no_std compatibility.
 use alloc::collections::BTreeMap;
 use ark_ec::AffineRepr;
-use ark_ff::{field_hashers::{DefaultFieldHasher, HashToField}};
+use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_serialize::CanonicalSerialize;
 use digest::FixedOutputReset;
 
@@ -103,8 +103,6 @@ fn collect_messages_and_publickeys<S: Signed>(
 /// parallel.  This might mean (a) some sort function using
 /// `ops::IndexMut` instead of slices, and (b) wrapper types to make
 /// tuples of slices satisfy `ops::IndexMut`.
-// TODO:  Impl PartialEq, Eq, Hash for pairing::EncodedPoint
-// to avoid  struct H(E::PublicKeyGroup::Affine::Uncompressed);
 fn merge_by_signer<E: EngineBLS>(
     affine_publickeys: Vec<PublicKeyAffine<E>>,
     messages: Vec<SignatureProjective<E>>,
@@ -141,11 +139,7 @@ fn merge_by_signer_with_aux<E: EngineBLS>(
         SignatureProjective<E>,
     );
     let mut map: BTreeMap<Vec<u8>, PkAuxMsg<E>> = BTreeMap::new();
-    for ((pk, aux), m) in affine_publickeys
-        .into_iter()
-        .zip(aux_keys)
-        .zip(messages)
-    {
+    for ((pk, aux), m) in affine_publickeys.into_iter().zip(aux_keys).zip(messages) {
         let aux_affine = aux.into_affine();
         let mut pk_bytes = vec![0; pk.uncompressed_size()];
         pk.serialize_uncompressed(&mut pk_bytes[..]).unwrap();
@@ -185,7 +179,6 @@ fn normalize_publickeys<E: EngineBLS>(
         publickeys.iter().map(|pk| pk.into_affine()).collect()
     }
 }
-
 
 /// Batch-normalize message points together with the aggregate signature,
 /// returning the affine messages and the affine signature separately.
@@ -241,8 +234,7 @@ pub fn verify_unoptimized<S: Signed>(s: S) -> bool {
 pub fn verify_simple<S: Signed>(s: S) -> bool {
     let (signature, publickeys, messages) = collect_messages_and_publickeys(s);
     let affine_pks = PublicKeyProjective::<S::E>::normalize_batch(&publickeys);
-    let (affine_msgs, affine_sig) =
-        normalize_messages_and_signature::<S::E>(messages, signature);
+    let (affine_msgs, affine_sig) = normalize_messages_and_signature::<S::E>(messages, signature);
     verify_normalized::<S::E>(&affine_pks, &affine_msgs, affine_sig)
 }
 
@@ -343,15 +335,13 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
 
     // Merge message points that share the same signer.
     // Returns None if same public key appears with conflicting aux keys.
-    let (merged_pks, merged_aux, mut merged_msgs) = match
-        merge_by_signer_with_aux::<S::E>(affine_publickeys, aux_keys, messages)
-    {
-        Some(v) => v,
-        None => return false,
-    };
+    let (merged_pks, merged_aux, mut merged_msgs) =
+        match merge_by_signer_with_aux::<S::E>(affine_publickeys, aux_keys, messages) {
+            Some(v) => v,
+            None => return false,
+        };
 
-    let hasher =
-        <DefaultFieldHasher<H> as HashToField<<S::E as EngineBLS>::Scalar>>::new(&[]);
+    let hasher = <DefaultFieldHasher<H> as HashToField<<S::E as EngineBLS>::Scalar>>::new(&[]);
 
     // Build the transcript once:
     //   asig || (msg_1 || apk1_1 || apk2_1) || ... || (msg_n || apk1_n || apk2_n)
@@ -364,8 +354,7 @@ pub fn verify_using_aggregated_auxiliary_public_keys<
 
     let entry_size = 2 * <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE
         + <S::E as EngineBLS>::PUBLICKEY_SERIALIZED_SIZE;
-    let transcript_size =
-        <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE + n * entry_size;
+    let transcript_size = <S::E as EngineBLS>::SIGNATURE_SERIALIZED_SIZE + n * entry_size;
     // Reserve a little extra for the per-entry index suffix used by t_i (i >= 2).
     let mut seed = Vec::with_capacity(transcript_size + core::mem::size_of::<u64>());
     seed.extend_from_slice(&signature_as_bytes);
@@ -700,12 +689,14 @@ mod tests {
     fn verify_prepared_accepts_cofactor_components() {
         let bad = signed_with_g1_cofactor_pk();
         let prepared_pk = <EB as EngineBLS>::prepare_public_key(bad.publickey.0);
-        let prepared_msg = <EB as EngineBLS>::prepare_signature(
-            bad.message.hash_to_signature_curve::<EB>(),
-        );
+        let prepared_msg =
+            <EB as EngineBLS>::prepare_signature(bad.message.hash_to_signature_curve::<EB>());
         let prepared_sig = <EB as EngineBLS>::prepare_signature(bad.signature.0);
         let pairs = [(prepared_pk, prepared_msg)];
-        assert!(<EB as EngineBLS>::verify_prepared(prepared_sig, pairs.iter()));
+        assert!(<EB as EngineBLS>::verify_prepared(
+            prepared_sig,
+            pairs.iter()
+        ));
     }
 
     #[test]

@@ -21,9 +21,9 @@ use digest::FixedOutputReset;
 use sha2::Sha256;
 
 use crate::broken_derives;
+use crate::chaum_pedersen_signature::DLEQProof;
 use crate::chaum_pedersen_signature::{ChaumPedersenSigner, ChaumPedersenVerifier};
 use crate::dual_scalar_mul::DualScalarMultiplication;
-use crate::chaum_pedersen_signature::DLEQProof;
 use crate::serialize::SerializableToBytes;
 use crate::single::{Keypair, KeypairVT, PublicKey, SecretKey, SecretKeyVT, Signature};
 use crate::{EngineBLS, Message, Signed};
@@ -34,8 +34,6 @@ use crate::{EngineBLS, Message, Signed};
 pub struct PublicKeyInSignatureGroup<E: EngineBLS>(pub E::SignatureGroup);
 broken_derives!(PublicKeyInSignatureGroup); // Actually the derive works for this one, not sure why.
 
-//TODO: Make a type for a sister group. This makes sense because SisterGroup it doesn't mean on itself
-// SisterGroup<E: EngineBLS> = CurveGroup + PrimeGroup<ScalarField = E::Scalar> + SerializableToBytes
 /// Wrapper for a point in the third curve sister group which is supposed to
 /// have the same logarithm as the public key in the public key group
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalDeserialize)]
@@ -238,10 +236,10 @@ where
     type M = Message;
     type PKG = PublicKey<E>;
 
-    type PKnM = ::core::iter::Once<(Message, PublicKey<E>)>;
-
-    fn messages_and_publickeys(self) -> Self::PKnM {
-        once((self.message.clone(), self.publickey.into_bls_public_key())) // TODO:  Avoid clone
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<Item = (Message, PublicKey<E>)> + ExactSizeIterator {
+        once((self.message.clone(), self.publickey.into_bls_public_key()))
     }
 
     fn signature(&self) -> Signature<E> {
