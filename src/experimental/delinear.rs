@@ -63,9 +63,10 @@ impl<'a, E: EngineBLS> Signed for &'a Delinearized<E> {
 
     type M = &'a Message;
     type PKG = &'a PublicKey<Self::E>;
-    type PKnM = ::std::collections::hash_map::Iter<'a, Message, PublicKey<E>>;
 
-    fn messages_and_publickeys(self) -> Self::PKnM {
+    fn messages_and_publickeys(
+        self,
+    ) -> impl Iterator<Item = (&'a Message, &'a PublicKey<E>)> + ExactSizeIterator {
         self.messages_n_publickeys.iter()
     }
 
@@ -122,7 +123,7 @@ impl<E: EngineBLS> Delinearized<E> {
         let (x, y) = array_refs!(&b, 8, 8);
         let mut x: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*x).into();
         let y: <E::Scalar as PrimeField>::BigInt = u64::from_le_bytes(*y).into();
-        x <<= 6; //warning: use of deprecated method `ark_ff::BigInteger::muln`: please use the operator `<<` instead : x.muln(64);
+        x <<= 64; //warning: use of deprecated method `ark_ff::BigInteger::muln`: please use the operator `<<` instead : x.muln(64);
         x.add_with_carry(&y);
         <E::Scalar as PrimeField>::from_bigint(x).unwrap()
     }

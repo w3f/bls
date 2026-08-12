@@ -5,7 +5,7 @@ extern crate test;
 const NO_OF_MULTI_SIG_SIGNERS: usize = 100;
 use crate::chaum_pedersen_signature::ChaumPedersenSigner;
 use crate::chaum_pedersen_signature::ChaumPedersenVerifier;
-use crate::multi_pop_aggregator::MultiMessageSignatureAggregatorAssumingPoP;
+use crate::pop_aggregator::SignatureAggregatorAssumingPoP;
 use crate::Keypair;
 use crate::Message;
 use crate::Signature as BLSSignature;
@@ -55,7 +55,7 @@ use crate::PublicKeyInSignatureGroup;
 // let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
 
 // let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
-// let mut aggregator = MultiMessageSignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+// let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
 //     for k in &mut keypairs {
 //     aggregator.aggregate(&k.signed_message(message));
@@ -63,7 +63,7 @@ use crate::PublicKeyInSignatureGroup;
 //     }
 
 //     b.iter(|| {
-//     let mut verifier_aggregator = MultiMessageSignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+//     let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 //     let mut verifier_aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
 
 //     verifier_aggregator.add_signature(&aggregator.signature);
@@ -85,7 +85,7 @@ use crate::PublicKeyInSignatureGroup;
 //     let message = Message::new(b"ctx",b"test message");
 
 //     b.iter(|| {
-//         let mut aggregator = MultiMessageSignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+//         let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 // 	    let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
 
 //         for k in &mut keypairs {
@@ -102,7 +102,7 @@ use crate::PublicKeyInSignatureGroup;
 //     let mut keypairs = generate_many_keypairs(NO_OF_MULTI_SIG_SIGNERS);
 //     let mut pub_keys_in_sig_grp : Vec<PublicKeyInSignatureGroup<TinyBLS377>> = keypairs.iter().map(|k| k.into_public_key_in_signature_group()).collect();
 
-//     let mut aggregator = MultiMessageSignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+//     let mut aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 // let mut aggregated_public_key = PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
 
 //     for k in &mut keypairs {
@@ -111,7 +111,7 @@ use crate::PublicKeyInSignatureGroup;
 //     }
 
 //     b.iter(|| {
-//     let mut verifier_aggregator = MultiMessageSignatureAggregatorAssumingPoP::<TinyBLS377>::new();
+//     let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
 //     verifier_aggregator.add_signature(&aggregator.signature);
 //     verifier_aggregator.add_message_n_publickey(&message, &aggregated_public_key);

@@ -2,14 +2,12 @@
 use sha2::Sha256;
 #[cfg(feature = "std")]
 use w3f_bls::{
-    single_pop_aggregator::SignatureAggregatorAssumingPoP, EngineBLS, Keypair, Message, NuggetBLS,
-    PublicKey, PublicKeyInSignatureGroup, Signed, TinyBLS, TinyBLS377,
+    pop_aggregator::SignatureAggregatorAssumingPoP, EngineBLS, Keypair, Message, NuggetBLS,
+    PublicKeyInSignatureGroup, TinyBLS, TinyBLS377,
 };
 
 #[cfg(feature = "std")]
 use ark_bls12_377::Bls12_377;
-#[cfg(feature = "std")]
-use ark_ff::Zero;
 #[cfg(feature = "std")]
 use rand::thread_rng;
 
@@ -31,26 +29,13 @@ fn main() {
             .iter()
             .map(|k| NuggetBLS::<_, <EB as EngineBLS>::SignatureGroup>::into_public_key_in_signature_group(k))
             .collect();
-        let mut prover_aggregator =
-            SignatureAggregatorAssumingPoP::<TinyBLS377>::new(message.clone());
-        let mut aggregated_public_key =
-            PublicKey::<TinyBLS377>(<TinyBLS377 as EngineBLS>::PublicKeyGroup::zero());
+        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new();
 
-        //sign and aggegate
-        keypairs.iter_mut().for_each(|k| {
-            prover_aggregator.add_signature(&k.sign(&message));
-            aggregated_public_key.0 += k.public.0;
-        });
-
-        let mut verifier_aggregator = SignatureAggregatorAssumingPoP::<TinyBLS377>::new(message);
-        //get the signature and already aggregated public key from the prover
-        verifier_aggregator.add_signature(&(&prover_aggregator).signature());
-        verifier_aggregator.add_publickey(&aggregated_public_key);
-
-        //aggregate public keys in signature group
-        pub_keys_in_sig_grp.iter().for_each(|pk| {
-            verifier_aggregator.add_auxiliary_public_key(pk);
-        });
+        //sign, aggregate, and add (publickey, aux) pairs
+        for (k, aux) in keypairs.iter_mut().zip(pub_keys_in_sig_grp.iter()) {
+            verifier_aggregator.add_signature(&k.sign(&message));
+            verifier_aggregator.add_message_n_publickey(&message, &(k.public, *aux));
+        }
 
         assert!(
             verifier_aggregator.verify_using_aggregated_auxiliary_public_keys::<Sha256>(),
